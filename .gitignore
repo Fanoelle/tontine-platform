@@ -1,0 +1,46 @@
+# Dépendances
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Variables d'environnement — ne jamais versionner de secret
+.env
+.env.*
+!.env.example
+
+# Journaux
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Tests
+coverage/
+.nyc_output/
+
+# Éditeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Base de données — sauvegardes et exports locaux
+*.dump
+*.sql.gz
+db/sauvegardes/
+
+# Temporaire
+tmp/
+.cache/
