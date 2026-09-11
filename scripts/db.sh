@@ -127,6 +127,59 @@ commande_supprimer() {
   succès 'conteneur supprimé'
 }
 
+commande_verifier() {
+  conteneur_tourne || erreur "le conteneur n'est pas démarré — lancez : $0 demarrer"
+  bannière 'Vérification des invariants'
+
+  # Ces contrôles reproduisent ce qu'une application boguée tenterait de faire.
+  # Un invariant qui n'a jamais été mis à l'épreuve n'est pas un invariant :
+  # c'est une intention.
+  local echecs=0
+
+  verifier_refus() {
+    local libelle="$1" sql="$2"
+    printf '  %-46s' "$libelle"
+    if psql_base -q -c "$sql" > /dev/null 2>&1; then
+      printf '\e[31mACCEPTÉ (anormal)\e[0m\n'
+      echecs=$((echecs + 1))
+    else
+      printf '\e[32mrefusé\e[0m\n'
+    fi
+  }
+
+  verifier_refus 'R-02 modification d une écriture' \
+    "UPDATE ecriture SET libelle = 'x' WHERE id = (SELECT id FROM ecriture LIMIT 1);"
+  verifier_refus 'R-02 suppression d une ligne' \
+    "DELETE FROM ligne_ecriture WHERE id = (SELECT id FROM ligne_ecriture LIMIT 1);"
+  verifier_refus 'R-03 montant négatif' \
+    "INSERT INTO ligne_ecriture (ecriture_id, compte_id, sens, montant)
+     SELECT (SELECT id FROM ecriture LIMIT 1), (SELECT id FROM compte LIMIT 1), 'DEBIT', -1;"
+  verifier_refus 'R-04 deux tours pour un même membre' \
+    "INSERT INTO tour (cycle_id, rang, beneficiaire_id, date_remise_prevue)
+     SELECT cycle_id, 99, beneficiaire_id, CURRENT_DATE FROM tour LIMIT 1;"
+  verifier_refus 'R-10 téléphone dupliqué' \
+    "INSERT INTO membre (groupe_id, nom_complet, telephone, date_adhesion)
+     SELECT groupe_id, 'Doublon', telephone, CURRENT_DATE FROM membre LIMIT 1;"
+  verifier_refus 'F-GRP-01 changement de type de groupe' \
+    "UPDATE groupe SET type = 'MUTUELLE' WHERE id = (SELECT id FROM groupe LIMIT 1);"
+
+  printf '\n  Équilibre global du journal : '
+  local ecart
+  ecart=$(psql_base -tAc \
+    "SELECT COALESCE(SUM(CASE sens WHEN 'DEBIT' THEN montant ELSE -montant END), 0)
+       FROM ligne_ecriture;")
+  if [ "$ecart" = '0' ]; then
+    printf '\e[32m0 — équilibré\e[0m\n'
+  else
+    printf '\e[31mécart de %s\e[0m\n' "$ecart"
+    echecs=$((echecs + 1))
+  fi
+
+  printf '\n'
+  [ "$echecs" -eq 0 ] || erreur "$echecs contrôle(s) en échec"
+  succès 'tous les invariants tiennent'
+}
+
 commande_aide() {
   cat <<'AIDE'
 Usage : ./scripts/db.sh <commande>
@@ -134,6 +187,7 @@ Usage : ./scripts/db.sh <commande>
   demarrer        Démarre la base, applique migrations et jeux de données
   arreter         Arrête le conteneur en conservant les données
   reinitialiser   Vide le schéma et réapplique tout
+  verifier        Éprouve les invariants : tente des violations, attend un refus
   console         Ouvre une console psql
   tester          Vérifie la connexion
   supprimer       Supprime le conteneur et ses données (confirmation demandée)
@@ -144,6 +198,7 @@ case "${1:-aide}" in
   demarrer)      commande_demarrer ;;
   arreter)       commande_arreter ;;
   reinitialiser) commande_reinitialiser ;;
+  verifier)      commande_verifier ;;
   console)       commande_console ;;
   tester)        commande_tester ;;
   supprimer)     commande_supprimer ;;

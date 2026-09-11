@@ -152,7 +152,13 @@ tontine-platform/
 ```bash
 ./scripts/db.sh demarrer     # conteneur, migrations, jeux de données
 ./scripts/db.sh tester       # vérifie la connexion
+./scripts/db.sh verifier     # éprouve les invariants : tente des violations
 ```
+
+`verifier` ne se contente pas de lire le schéma : il **tente** une modification
+d'écriture, un montant négatif, un téléphone dupliqué, un second tour pour le
+même membre — et attend un refus de la base pour chacun. Un invariant jamais mis
+à l'épreuve n'est pas un invariant, c'est une intention.
 
 La base écoute sur le port **55433** :
 
@@ -224,6 +230,7 @@ complet, la caisse reste équilibrée à chaque tour, et tout écart est traçab
 | Document | Objet |
 |---|---|
 | [Cahier des charges](docs/cahier-des-charges.md) | Acteurs, exigences codées, règles de gestion, jalons |
+| [Conception de l'interface](docs/conception-interface.md) | Écrans, enchaînement, vocabulaire employé |
 | [Modèle de données](docs/modele-de-donnees.md) | Schéma, dictionnaire, invariants |
 | [Détection d'anomalies](docs/detection-anomalies.md) | Règles, seuils, gravités |
 | [Diagrammes](docs/diagrammes/) | Cas d'utilisation, classes, séquences, états |
