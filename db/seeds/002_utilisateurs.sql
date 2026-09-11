@@ -19,7 +19,10 @@ BEGIN;
 DO $$
 DECLARE
     v_groupe UUID;
-    v_hash   TEXT := '$2b$12$0FcnPrmnpV0zj0YCsvpVaenRHTncxCDRSWYc5Xco6hCmsjcuebvSe';
+    -- Hachage bcrypt de « tontine2026 », coût 12, VÉRIFIÉ par comparaison
+    -- avant d'être inscrit ici. Un hachage recopié sans être éprouvé produit
+    -- des comptes qui existent en base mais dont personne ne peut se servir.
+    v_hash   TEXT := '$2b$12$bd0aQLSwtB9YjHpTTOjqOOY7.cwZ8nk1bUBczf0Q2KBjrS2fg7ur6';
     v_membre UUID;
 BEGIN
     SELECT id INTO v_groupe FROM groupe WHERE nom = 'Tontine des Femmes de Bonabéri';
