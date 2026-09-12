@@ -316,8 +316,7 @@ qu'il sert à illustrer.
 | **V7 — Recette** | Cycle complet de 12 tours, propriétés vérifiées à chaque tour | ✅ terminé |
 | **V3 — Routes métier** | Cotisations, tours, membres, tableau de bord, journal | ✅ terminé — 22 tests verts |
 | **Écrans** | Interface web, 6 écrans, servie par l'API | ✅ terminé — 33 ko |
-| **Jalon 2 — SQL & API** | Prêts ASCA, épargne, aides mutualistes, moteur d'anomalies | ✅ terminé — 40 tests verts |
-| **Jalon 2 — écrans** | Prêts, aides et anomalies dans l'interface | 🔨 en cours |
+| **Jalon 2** | Prêts ASCA, épargne, aides mutualistes, moteur d'anomalies, écrans | ✅ terminé — 40 tests verts |
 | **Jalon 2 — notifications** | Rappels e-mail, alertes d'anomalie | ⏳ à venir |
 | **Jalon 3** | Rapprochement Mobile Money, WhatsApp, exports, archivage | ⏳ à venir |
 
