@@ -168,27 +168,31 @@ postgresql://postgres:dev@localhost:55433/tontine
 
 Autres commandes : `arreter`, `reinitialiser`, `console`, `supprimer`.
 
-### API — installation en attente
-
-Le code de l'API est écrit mais **n'a jamais été compilé ni exécuté** : l'accès
-réseau sortant de la machine de développement est coupé (registre npm et GitHub
-injoignables, en IPv4 comme en IPv6), et le cache npm local ne couvre pas
-l'arbre de dépendances complet.
-
-Dès que le réseau est rétabli :
+### API
 
 ```bash
 cd api
 cp .env.example .env          # puis remplacer JWT_SECRET
 npm install
 npm run verifier-types        # compilation TypeScript
-npm run tester                # tests d'intégration contre la vraie base
-npm run dev
+npm run tester                # 9 tests d'intégration contre la vraie base
+npm run dev                   # http://localhost:3100/api
+```
+
+L'API écoute sur le port **3100** — le 3000 est occupé par un autre projet de
+la machine. Elle se connecte en tant que `tontine_app`, le rôle dont les
+privilèges `UPDATE` et `DELETE` sont révoqués sur le journal, et **vérifie ce
+point au démarrage** :
+
+```
+[BaseService] Connecté en tant que « tontine_app »
+[BaseService] R-02 vérifié : journal non modifiable par ce rôle
 ```
 
 Les tests exigent une base démarrée et les deux jeux de données chargés. Ils
 vérifient que les gardes refusent réellement : route sans jeton, jeton
-fantaisiste, mot de passe erroné, propriété non déclarée.
+fantaisiste, schéma autre que `Bearer`, mot de passe erroné, téléphone inconnu,
+téléphone mal formé, propriété non déclarée.
 
 Comptes de démonstration — mot de passe `tontine2026` :
 
@@ -206,7 +210,7 @@ Comptes de démonstration — mot de passe `tontine2026` :
 |---|---|---|
 | **Conception** | Cahier des charges, modèle de données, diagrammes, décisions | ✅ terminé |
 | **V1 — Schéma** | 11 tables, 3 vues, 19 déclencheurs ; les 10 invariants tenus par la base ; jeu de démonstration 12 membres | ✅ terminé |
-| **V2 — Fondations API** | NestJS, `pg`, authentification, garde globale, cloisonnement par jeton | ⚠️ code écrit, **jamais compilé ni testé** |
+| **V2 — Fondations API** | NestJS, `pg`, authentification, garde globale, cloisonnement par jeton | ✅ terminé — 9 tests verts |
 | **V4 — Journal & cotisations** | `enregistrer_versement`, `annuler_versement`, `dispenser_echeance` | ✅ terminé (SQL) |
 | **V5 — Tour de rôle ROSCA** | `remettre_cagnotte`, `tour_en_cours`, refus si cagnotte incomplète | ✅ terminé (SQL) |
 | **V6 — Restitution** | Impayés, situation de caisse, recouvrement, tableau de bord, relevé | ✅ terminé (SQL) |

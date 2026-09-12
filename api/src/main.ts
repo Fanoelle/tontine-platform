@@ -20,7 +20,9 @@ async function demarrer(): Promise<void> {
     }),
   );
 
-  const port = process.env.PORT ?? 3000;
+  // 3100 par défaut : le 3000 est occupé par un autre projet de cette machine,
+  // et ce projet ne partage ni port, ni base, ni dépendance avec eux.
+  const port = process.env.PORT ?? 3100;
   await application.listen(port);
   journal.log(`API à l'écoute sur http://localhost:${port}/api`);
 }

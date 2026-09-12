@@ -5,11 +5,23 @@
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
+    // esModuleInterop ET PAS SEULEMENT allowSyntheticDefaultImports. Le second
+    // autorise `import x from 'cjs'` à la compilation mais n'émet aucun helper :
+    // à l'exécution, `supertest` reste un module CommonJS sans propriété
+    // `default`, et l'appel échoue sur « is not a function ». Le premier génère
+    // l'interopérabilité réellement nécessaire. Une configuration qui satisfait
+    // le typage sans satisfaire l'exécution est pire qu'une erreur franche :
+    // elle ne se révèle qu'au premier test.
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    // rootDir explicite : sans lui, TypeScript déduit la racine commune des
+    // fichiers compilés et la disposition de `dist/` changerait si un fichier
+    // apparaissait hors de `src/`. `baseUrl` est retiré — déprécié en
+    // TypeScript 7 — et inutile ici : aucun chemin d'import n'est réécrit.
+    "rootDir": "./src",
     "incremental": true,
     "skipLibCheck": true,
 
