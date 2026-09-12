@@ -221,6 +221,22 @@ Aucune ne porte d'identifiant de groupe : il vient du jeton (N-SEC-03).
 | `GET /api/situation-caisse` | bureau | F-RAP-02, F-TRX-04 |
 | `GET /api/recouvrement` | bureau | F-RAP-03 |
 | `GET /api/journal` | commissaire, bureau | F-TRX-03 |
+| `GET /api/prets` | authentifié | F-RAP-04 |
+| `GET /api/prets/avoir-disponible` | bureau | R-06 |
+| `GET /api/prets/:id/echeancier` | authentifié | F-PRE-03 |
+| `POST /api/prets` | authentifié | F-PRE-01 |
+| `POST /api/prets/:id/approbation` | président | F-PRE-02, R-06 |
+| `POST /api/prets/:id/refus` | président | F-PRE-02 |
+| `POST /api/prets/:id/remboursement` | trésorier | F-PRE-04, R-07 |
+| `GET /api/aides` | authentifié | F-AID-01 |
+| `GET /api/aides/:id/eligibilite` | bureau | F-AID-03 |
+| `POST /api/aides` | authentifié | F-AID-01 |
+| `POST /api/aides/:id/approbation` | président | F-AID-02 |
+| `POST /api/aides/:id/versement` | trésorier | F-AID-02 |
+| `GET /api/anomalies` | commissaire, bureau | F-TDB-04 |
+| `GET /api/anomalies/levees` | commissaire, bureau | F-ANO-08 |
+| `POST /api/anomalies/balayage` | commissaire, bureau | F-ANO-01→06 |
+| `POST /api/anomalies/:id/levee` | commissaire, trésorier | F-ANO-08, F-ANO-09 |
 
 Le journal n'est pas exposé aux membres : un membre lit son relevé en langage
 courant, jamais le mécanisme comptable (N-USG-05).
@@ -251,13 +267,39 @@ on ne passe pas d'écriture inverse ; on lit « il reste 15 000 F à verser », 
 « échéance partielle ». Le mot **payer n'apparaît nulle part** — la plateforme
 n'encaisse rien, et le laisser croire tromperait sur la nature du service.
 
-Comptes de démonstration — mot de passe `tontine2026` :
+### Comptes de démonstration
 
-| Téléphone | Membre | Rôles |
+Mot de passe commun : `tontine2026`. **Trois groupes coexistent sur la même
+base**, un par mécanisme — c'est la seule configuration où le cloisonnement
+(N-SEC-02) et la cohérence de type (décision 0002) sont réellement mis à
+l'épreuve : tant qu'un seul groupe existe, aucune fuite transversale n'est
+observable.
+
+**ROSCA — Tontine des Femmes de Bonabéri** · 12 membres, cycle en cours au tour 3
+
+| Téléphone | Membre | Rôle |
 |---|---|---|
 | `+237690110001` | Awa Ndiaye | présidente |
 | `+237690110002` | Marie Ebolo | trésorière |
 | `+237690110003` | Fatou Bâ | commissaire aux comptes |
+
+**ASCA — Caisse d'épargne des Jeunes de Deido** · 8 membres, 1 prêt en cours
+
+| Téléphone | Membre | Rôle |
+|---|---|---|
+| `+237677220001` | Émile Njoya | président |
+| `+237677220002` | Patrick Mbappé | trésorier |
+
+**MUTUELLE — Association Solidarité de Bafoussam** · 10 membres, 3 aides
+
+| Téléphone | Membre | Rôle |
+|---|---|---|
+| `+237699330001` | Pauline Kamdem | présidente |
+| `+237699330002` | Joseph Tagne | trésorier |
+
+Les trois jeux de données ont des **dates relatives au jour de chargement** :
+un décor aux dates figées vieillit et met en défaut les règles de détection
+qu'il sert à illustrer.
 
 ---
 
@@ -274,7 +316,9 @@ Comptes de démonstration — mot de passe `tontine2026` :
 | **V7 — Recette** | Cycle complet de 12 tours, propriétés vérifiées à chaque tour | ✅ terminé |
 | **V3 — Routes métier** | Cotisations, tours, membres, tableau de bord, journal | ✅ terminé — 22 tests verts |
 | **Écrans** | Interface web, 6 écrans, servie par l'API | ✅ terminé — 33 ko |
-| **Jalon 2** | Prêts, épargne ASCA, aides, moteur d'anomalies, notifications | ⏳ à venir |
+| **Jalon 2 — SQL & API** | Prêts ASCA, épargne, aides mutualistes, moteur d'anomalies | ✅ terminé — 40 tests verts |
+| **Jalon 2 — écrans** | Prêts, aides et anomalies dans l'interface | 🔨 en cours |
+| **Jalon 2 — notifications** | Rappels e-mail, alertes d'anomalie | ⏳ à venir |
 | **Jalon 3** | Rapprochement Mobile Money, WhatsApp, exports, archivage | ⏳ à venir |
 
 ### Invariants vérifiés en base

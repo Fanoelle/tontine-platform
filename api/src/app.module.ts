@@ -16,8 +16,11 @@ import { AuthentificationModule } from './authentification/authentification.modu
 import { JetonGarde } from './authentification/jeton.garde';
 import { RolesGarde } from './authentification/roles.garde';
 import { BaseModule } from './base/base.module';
+import { AidesModule } from './aides/aides.module';
+import { AnomaliesModule } from './anomalies/anomalies.module';
 import { CotisationsModule } from './cotisations/cotisations.module';
 import { GroupesModule } from './groupes/groupes.module';
+import { PretsModule } from './prets/prets.module';
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { GroupesModule } from './groupes/groupes.module';
     AuthentificationModule,
     CotisationsModule,
     GroupesModule,
+    PretsModule,
+    AidesModule,
+    AnomaliesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JetonGarde },
