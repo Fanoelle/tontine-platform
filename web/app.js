@@ -203,9 +203,20 @@ function ongletsVisibles() {
     onglets.push({ cle: 'aides', nom: 'Aides' });
   }
 
+  // Le rapport d'assemblée est ouvert à TOUS les membres : c'est un document
+  // fait pour être lu devant le groupe. Le réserver au bureau reproduirait
+  // l'opacité que la plateforme existe pour abolir.
+  onglets.push({ cle: 'rapport', nom: 'Rapport' });
+
   if (bureau) {
     onglets.push({ cle: 'anomalies', nom: 'À vérifier' });
     onglets.push({ cle: 'journal',   nom: 'Opérations' });
+  }
+
+  // Le rapprochement Mobile Money n'a de sens que pour le trésorier, qui seul
+  // saisit les versements dont il faut vérifier la trace.
+  if (aRole('TRESORIER')) {
+    onglets.push({ cle: 'rapprochement', nom: 'Mobile Money' });
   }
 
   return onglets;
@@ -234,6 +245,8 @@ const ECRANS = {
   aides:     ecranAides,
   anomalies: ecranAnomalies,
   journal:   ecranJournal,
+  rapport:       ecranRapport,
+  rapprochement: ecranRapprochement,
 };
 
 async function afficher(cle) {
@@ -998,6 +1011,162 @@ async function ecranAnomalies(contenu) {
       }
     });
   });
+}
+
+/* -------------------------------------------------------------- rapport --- */
+
+/* F-RAP-05 — LE RAPPORT D'ASSEMBLÉE.
+   Un document qu'une personne lit à voix haute devant le groupe, et que chacun
+   doit pouvoir contester chiffre en main. Il dit aussi ce qui ne va pas : taire
+   les anomalies ouvertes reviendrait à rassurer plutôt qu'à rendre compte. */
+
+async function ecranRapport(contenu) {
+  const lignes = await appel('/rapport-assemblee');
+
+  // Regroupement par rubrique, dans l'ordre où le serveur les renvoie : cet
+  // ordre est celui de la lecture en assemblée, il ne doit pas être trié.
+  const rubriques = [];
+  for (const l of lignes) {
+    let groupe = rubriques.find((r) => r.nom === l.rubrique);
+    if (!groupe) {
+      groupe = { nom: l.rubrique, lignes: [] };
+      rubriques.push(groupe);
+    }
+    groupe.lignes.push(l);
+  }
+
+  const cartes = rubriques.map((r) => `
+    <div class="carte">
+      <h2>${txt(r.nom)}</h2>
+      ${r.lignes.map((l) => `
+        <div class="ligne">
+          <span>${txt(l.intitule)}</span>
+          <span class="montant">${txt(l.valeur)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+
+  contenu.innerHTML = `
+    <div class="carte">
+      <h2>Rapport d'assemblée</h2>
+      <p class="discret">
+        Tous les chiffres sont recalculés à partir des opérations enregistrées.
+        Chacun peut les vérifier pièce en main.
+      </p>
+      <button class="secondaire" id="export-rapport">Enregistrer en tableur</button>
+    </div>
+    ${cartes}`;
+
+  document.getElementById('export-rapport').addEventListener('click', () => {
+    telecharger('/exports/rapport.csv', 'rapport-assemblee.csv');
+  });
+}
+
+/* Téléchargement d'un export. Le jeton voyageant dans un en-tête, un simple
+   lien ne suffit pas : on récupère le contenu puis on le remet au navigateur. */
+async function telecharger(chemin, nom) {
+  try {
+    const reponse = await fetch(API + chemin, {
+      headers: { Authorization: 'Bearer ' + session.jeton },
+    });
+    if (!reponse.ok) throw new Error('Export refusé');
+
+    const texte = await reponse.text();
+    const lien = document.createElement('a');
+    lien.href = URL.createObjectURL(
+      new Blob([texte], { type: 'text/csv;charset=utf-8' }));
+    lien.download = nom;
+    lien.click();
+    URL.revokeObjectURL(lien.href);
+    message('Fichier enregistré.', 'succes');
+  } catch (err) {
+    message(err.message, 'echec');
+  }
+}
+
+/* -------------------------------------------------- rapprochement MM --- */
+
+/* F-TRX-06 — LE RAPPROCHEMENT NE CORRIGE RIEN.
+   Il compare le relevé de l'opérateur au registre et signale les écarts dans
+   les deux sens. Importer automatiquement les lignes reviendrait à laisser un
+   opérateur écrire dans les comptes du groupe. */
+
+async function ecranRapprochement(contenu) {
+  const releves = await appel('/releves');
+
+  if (releves.length === 0) {
+    contenu.innerHTML = `
+      <div class="carte"><div class="vide">
+        <p><strong>Aucun relevé importé.</strong></p>
+        <p class="discret">
+          Importez un relevé Mobile Money pour vérifier qu'il correspond aux
+          versements enregistrés.
+        </p>
+      </div></div>`;
+    return;
+  }
+
+  const dernier = releves[0];
+  const r = await appel('/releves/' + dernier.id + '/rapprochement');
+
+  const ecarts = r.lignes.filter((l) => l.statut !== 'RAPPROCHE');
+
+  let html = `
+    <div class="carte">
+      <h2>${txt(dernier.operateur)}</h2>
+      <p class="discret">
+        Du ${date(dernier.periode_debut)} au ${date(dernier.periode_fin)} ·
+        ${txt(dernier.lignes)} ligne(s) importée(s)
+      </p>
+    </div>
+    <div class="grille">
+      <div class="chiffre">
+        <span class="valeur">${txt(r.synthese.rapproches)}</span>
+        <span class="etiquette">versements retrouvés</span>
+      </div>
+      <div class="chiffre">
+        <span class="valeur">${txt(r.synthese.absents_du_registre)}</span>
+        <span class="etiquette">reçus mais non saisis</span>
+      </div>
+      <div class="chiffre">
+        <span class="valeur">${txt(r.synthese.absents_du_releve)}</span>
+        <span class="etiquette">saisis mais introuvables</span>
+      </div>
+    </div>`;
+
+  if (ecarts.length > 0) {
+    html += `<div class="carte">
+      <h2>À vérifier</h2>
+      <p class="discret">
+        Ces écarts sont signalés, non corrigés. C'est à vous de décider ce que
+        chacun appelle.
+      </p>` +
+      ecarts.map((l) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">
+              ${l.statut === 'ABSENT_DU_REGISTRE'
+                ? 'Reçu mais non enregistré'
+                : 'Enregistré mais absent du relevé'}
+            </span>
+            <span class="detail">
+              ${txt(l.reference)}${l.membre ? ' · ' + txt(l.membre) : ''}
+              · ${date(l.date_operation)}
+            </span>
+          </div>
+          <span class="montant">
+            ${francs(l.montant_releve || l.montant_registre)}
+          </span>
+        </div>`).join('') + `</div>`;
+  } else {
+    html += `<div class="carte"><div class="vide">
+               <p><strong>Tout concorde.</strong></p>
+               <p class="discret">
+                 Chaque versement du relevé correspond à un versement enregistré.
+               </p>
+             </div></div>`;
+  }
+
+  contenu.innerHTML = html;
 }
 
 /* -------------------------------------------------------------- journal --- */

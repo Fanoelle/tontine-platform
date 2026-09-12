@@ -237,6 +237,16 @@ Aucune ne porte d'identifiant de groupe : il vient du jeton (N-SEC-03).
 | `GET /api/anomalies/levees` | commissaire, bureau | F-ANO-08 |
 | `POST /api/anomalies/balayage` | commissaire, bureau | F-ANO-01→06 |
 | `POST /api/anomalies/:id/levee` | commissaire, trésorier | F-ANO-08, F-ANO-09 |
+| `GET /api/rapport-assemblee` | authentifié | F-RAP-05 |
+| `GET /api/exports/journal.csv` | bureau | F-RAP-06 |
+| `GET /api/exports/membres.csv` | bureau | F-RAP-06 |
+| `GET /api/exports/rapport.csv` | authentifié | F-RAP-06 |
+| `GET /api/releves` | bureau | F-TRX-06 |
+| `POST /api/releves` | trésorier | F-TRX-06 |
+| `GET /api/releves/:id/rapprochement` | bureau | F-TRX-06 |
+| `GET /api/redistribution` | bureau | F-EPA-03, F-EPA-04 |
+| `POST /api/reechelonnements/:id` | président | F-PRE-07 |
+| `POST /api/archivage` | président | F-GRP-06 |
 
 Le journal n'est pas exposé aux membres : un membre lit son relevé en langage
 courant, jamais le mécanisme comptable (N-USG-05).

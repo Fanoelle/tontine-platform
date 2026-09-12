@@ -21,6 +21,7 @@ import { AnomaliesModule } from './anomalies/anomalies.module';
 import { CotisationsModule } from './cotisations/cotisations.module';
 import { GroupesModule } from './groupes/groupes.module';
 import { PretsModule } from './prets/prets.module';
+import { RapportsModule } from './rapports/rapports.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PretsModule } from './prets/prets.module';
     PretsModule,
     AidesModule,
     AnomaliesModule,
+    RapportsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JetonGarde },
