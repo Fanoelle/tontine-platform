@@ -175,7 +175,7 @@ cd api
 cp .env.example .env          # puis remplacer JWT_SECRET
 npm install
 npm run verifier-types        # compilation TypeScript
-npm run tester                # 9 tests d'intégration contre la vraie base
+npm run tester                # 22 tests d'intégration contre la vraie base
 npm run dev                   # http://localhost:3100/api
 ```
 
@@ -193,6 +193,34 @@ Les tests exigent une base démarrée et les deux jeux de données chargés. Ils
 vérifient que les gardes refusent réellement : route sans jeton, jeton
 fantaisiste, schéma autre que `Bearer`, mot de passe erroné, téléphone inconnu,
 téléphone mal formé, propriété non déclarée.
+
+> **Les tests consomment le jeu de démonstration** : ils encaissent le tour 3
+> puis remettent sa cagnotte. Relancez `./scripts/db.sh reinitialiser` avant
+> chaque passage, sinon les échéances sont déjà réglées et le parcours échoue.
+
+### Routes
+
+Aucune ne porte d'identifiant de groupe : il vient du jeton (N-SEC-03).
+
+| Route | Rôle requis | Exigence |
+|---|---|---|
+| `POST /api/authentification/connexion` | — *(publique)* | N-SEC-01 |
+| `GET /api/authentification/session` | authentifié | N-SEC-03 |
+| `GET /api/tableau-de-bord` | authentifié | F-TDB-01, F-TDB-05 |
+| `GET /api/membres` | authentifié | F-MBR-03 |
+| `GET /api/tours` | authentifié | F-TOU-02 |
+| `POST /api/tours/:id/remise` | trésorier | F-TOU-03, R-05 |
+| `GET /api/cotisations/impayes` | bureau | F-COT-04 |
+| `POST /api/cotisations` | trésorier | F-COT-02, F-COT-03 |
+| `POST /api/cotisations/:id/annulation` | trésorier | F-COT-05 |
+| `POST /api/cotisations/echeances/:id/dispense` | président | F-COT-07 |
+| `GET /api/cotisations/releve/:membre_id` | authentifié | F-RAP-01 |
+| `GET /api/situation-caisse` | bureau | F-RAP-02, F-TRX-04 |
+| `GET /api/recouvrement` | bureau | F-RAP-03 |
+| `GET /api/journal` | commissaire, bureau | F-TRX-03 |
+
+Le journal n'est pas exposé aux membres : un membre lit son relevé en langage
+courant, jamais le mécanisme comptable (N-USG-05).
 
 Comptes de démonstration — mot de passe `tontine2026` :
 
@@ -215,7 +243,8 @@ Comptes de démonstration — mot de passe `tontine2026` :
 | **V5 — Tour de rôle ROSCA** | `remettre_cagnotte`, `tour_en_cours`, refus si cagnotte incomplète | ✅ terminé (SQL) |
 | **V6 — Restitution** | Impayés, situation de caisse, recouvrement, tableau de bord, relevé | ✅ terminé (SQL) |
 | **V7 — Recette** | Cycle complet de 12 tours, propriétés vérifiées à chaque tour | ✅ terminé |
-| **V3 — Écrans** | Interface React sur les fonctions ci-dessus | ⏳ à venir |
+| **V3 — Routes métier** | Cotisations, tours, membres, tableau de bord, journal | ✅ terminé — 22 tests verts |
+| **Écrans** | Interface React sur les routes ci-dessus | ⏳ à venir |
 | **Jalon 2** | Prêts, épargne ASCA, aides, moteur d'anomalies, notifications | ⏳ à venir |
 | **Jalon 3** | Rapprochement Mobile Money, WhatsApp, exports, archivage | ⏳ à venir |
 

@@ -16,12 +16,16 @@ import { AuthentificationModule } from './authentification/authentification.modu
 import { JetonGarde } from './authentification/jeton.garde';
 import { RolesGarde } from './authentification/roles.garde';
 import { BaseModule } from './base/base.module';
+import { CotisationsModule } from './cotisations/cotisations.module';
+import { GroupesModule } from './groupes/groupes.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     BaseModule,
     AuthentificationModule,
+    CotisationsModule,
+    GroupesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JetonGarde },
