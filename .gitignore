@@ -50,3 +50,7 @@ db/sauvegardes/
 # Temporaire
 tmp/
 .cache/
+
+# Captures d'écran de vérification — artefacts locaux, régénérables
+# par Chromium headless. Elles servent à contrôler le rendu, pas à le décrire.
+.captures/

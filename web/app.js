@@ -263,10 +263,23 @@ async function afficher(cle) {
   }
 }
 
+/** Initiales d'un nom de groupe, pour la pastille d'en-tête.
+    Deux lettres au plus : au-delà, elles deviennent illisibles dans 38 px.
+    On ignore les mots-outils, qui n'identifient rien — « Tontine des Femmes de
+    Bonabéri » donne « TF », pas « TD ». */
+function initiales(nom) {
+  const outils = ['de', 'des', 'du', 'la', 'le', 'les', 'd', 'l', 'et', 'aux'];
+  const mots = String(nom || '')
+    .split(/[\s'’-]+/)
+    .filter((m) => m && !outils.includes(m.toLowerCase()));
+  return mots.slice(0, 2).map((m) => m[0].toUpperCase()).join('') || '?';
+}
+
 function demarrer() {
   document.getElementById('ecran-connexion').classList.remove('actif');
   document.getElementById('application').hidden = false;
   document.getElementById('nom-groupe').textContent = session.groupe.nom;
+  document.getElementById('pastille').textContent = initiales(session.groupe.nom);
   document.getElementById('identite').textContent =
     session.membre.nom_complet + ' · ' + session.membre.roles.join(', ').toLowerCase();
 

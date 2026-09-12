@@ -1,319 +1,815 @@
 /* ==========================================================================
    Interface de la plateforme de tontines
 
-   CONÇUE POUR LE TÉLÉPHONE D'ABORD (N-USG-01, écrans ≥ 360 px). Une colonne,
-   cibles tactiles d'au moins 44 px, aucun tableau large : les listes sont des
-   cartes empilées, qui restent lisibles à 360 px comme à 1200.
+   TÉLÉPHONE D'ABORD (N-USG-01, écrans ≥ 360 px). Une colonne, cibles tactiles
+   d'au moins 44 px, aucun tableau large : les listes sont des cartes empilées,
+   lisibles à 360 px comme à 1400.
 
-   AUCUNE POLICE DISTANTE, AUCUNE IMAGE (N-USG-02). Les polices système
-   s'affichent instantanément et ne coûtent aucun octet. Sur une connexion
-   lente, une police distante retarde le premier rendu de plusieurs secondes.
+   AUCUNE POLICE DISTANTE, AUCUNE IMAGE, AUCUNE DÉPENDANCE (N-USG-02). Tout
+   l'effet visuel vient de la couleur, de la profondeur et du mouvement —
+   jamais d'un fichier téléchargé. Une police distante retarderait le premier
+   rendu de plusieurs secondes sur connexion lente, et l'exigence est chiffrée.
+
+   IDENTITÉ : violet-indigo profond, accents chauds. Une tontine est un objet
+   social avant d'être un objet comptable ; le bleu institutionnel d'une banque
+   trahissait le sujet. Le violet reste sérieux sans être froid, et les accents
+   ambre/corail portent la chaleur du collectif.
    ========================================================================== */
 
+/* --------------------------------------------------------------- jetons --- */
+
 :root {
-  --encre:        #1a1a1a;
-  --encre-douce:  #5a5a5a;
+  color-scheme: light dark;
+
+  /* Violet profond — la couleur de marque. Trois nuances suffisent : une pour
+     l'aplat, une pour le survol, une pour les fonds teintés. */
+  --violet:       #6d3bd4;
+  --violet-vif:   #8552e8;
+  --violet-sombre:#4e28a0;
+  --violet-pale:  #f2ecfe;
+  --violet-ombre: rgba(109, 59, 212, .28);
+
+  /* Accents chauds. L'ambre porte l'attente, le corail le refus, la menthe
+     l'acquis. Trois couleurs d'état, pas plus : au-delà, la signification se
+     dilue et l'utilisateur cesse de lire la couleur comme une information. */
+  --menthe:       #0d8f6a;
+  --menthe-fond:  #e0f7ef;
+  --menthe-trait: #9adcc4;
+  --ambre:        #b4700a;
+  --ambre-fond:   #fff3de;
+  --ambre-trait:  #f0cb8c;
+  --corail:       #d63d51;
+  --corail-fond:  #ffebee;
+  --corail-trait: #f5b7c0;
+
+  /* Encre et papier. Le fond tire légèrement vers le violet plutôt qu'un gris
+     neutre : l'ensemble paraît d'un seul tenant. */
+  --encre:        #1a1526;
+  --encre-douce:  #5f5873;
+  --encre-tenue:  #8d87a0;
   --papier:       #ffffff;
-  --fond:         #f4f2ee;
-  --trait:        #ddd8d0;
+  --fond:         #f6f4fb;
+  --fond-appui:   #ebe7f5;
+  --trait:        #e2ddee;
+  --trait-fort:   #c9c2dc;
 
-  /* Le vert porte l'acquis, l'ambre l'attente, le rouge le refus. Trois
-     couleurs suffisent : au-delà, la signification se dilue. */
-  --regle:        #1d7a4c;
-  --regle-fond:   #e8f4ed;
-  --attente:      #a8700a;
-  --attente-fond: #fbf2e0;
-  --refus:        #a62828;
-  --refus-fond:   #fbeaea;
+  /* Profondeur teintée de violet : une ombre grise sur un fond coloré paraît
+     sale. */
+  --ombre-1: 0 1px 2px rgba(46, 26, 92, .06),
+             0 2px 6px rgba(46, 26, 92, .05);
+  --ombre-2: 0 4px 12px rgba(46, 26, 92, .10),
+             0 2px 4px rgba(46, 26, 92, .06);
+  --ombre-3: 0 12px 32px rgba(46, 26, 92, .18);
+  --ombre-violet: 0 6px 20px var(--violet-ombre);
 
-  --accent:       #1d5a8a;
-  --rayon:        10px;
+  /* Échelle d'espacement fondée sur 4 px : toute marge est un multiple, ce qui
+     supprime les alignements approximatifs d'un écran à l'autre. */
+  --e1: 4px;   --e2: 8px;   --e3: 12px;  --e4: 16px;
+  --e5: 24px;  --e6: 32px;  --e7: 48px;
+
+  --rayon-s: 10px;
+  --rayon:   14px;
+  --rayon-l: 20px;
+
+  --transition: 160ms cubic-bezier(.34, 1.2, .64, 1);
+  --transition-douce: 220ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* MODE SOMBRE, SELON LE SYSTÈME. Pas de bascule manuelle : un réglage de plus
+   à comprendre pour un bénéfice que le système rend déjà. Seuls les jetons
+   changent — aucune règle de mise en page n'est dupliquée. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --violet:       #a97bff;
+    --violet-vif:   #bc96ff;
+    --violet-sombre:#8552e8;
+    --violet-pale:  #241a3d;
+    --violet-ombre: rgba(169, 123, 255, .3);
+
+    --menthe:       #4fd6a8;
+    --menthe-fond:  #12291f;
+    --menthe-trait: #1f5c45;
+    --ambre:        #f0b95c;
+    --ambre-fond:   #2b2114;
+    --ambre-trait:  #614a20;
+    --corail:       #ff8a99;
+    --corail-fond:  #2d181c;
+    --corail-trait: #5e2c35;
+
+    --encre:        #ece8f5;
+    --encre-douce:  #a69fbd;
+    --encre-tenue:  #766e8c;
+    --papier:       #1c1830;
+    --fond:         #120f1f;
+    --fond-appui:   #272140;
+    --trait:        #322a4d;
+    --trait-fort:   #453b66;
+
+    --ombre-1: 0 1px 3px rgba(0, 0, 0, .35);
+    --ombre-2: 0 4px 14px rgba(0, 0, 0, .45);
+    --ombre-3: 0 12px 36px rgba(0, 0, 0, .6);
+    --ombre-violet: 0 6px 22px rgba(169, 123, 255, .35);
+  }
 }
 
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 16px;              /* 16 px : en deçà, iOS zoome à la saisie. */
-  line-height: 1.5;
+  /* 16 px minimum : en deçà, iOS zoome automatiquement à la saisie et casse
+     la mise en page. */
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
   color: var(--encre);
   background: var(--fond);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3 { margin: 0 0 .5rem; line-height: 1.25; }
-h1 { font-size: 1.6rem; }
-h2 { font-size: 1.2rem; }
-h3 { font-size: 1rem; }
+h1 { font-size: 1.8rem; font-weight: 750; letter-spacing: -.03em; }
+h2 { font-size: 1.1875rem; font-weight: 700; letter-spacing: -.015em; }
+h3 { font-size: .9375rem; font-weight: 650; }
+h1, h2, h3 { margin: 0 0 var(--e2); line-height: 1.22; }
 
 code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: .9em;
-  background: var(--fond);
-  padding: .1em .35em;
-  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  font-size: .875em;
+  background: var(--violet-pale);
+  color: var(--violet);
+  padding: .2em .45em;
+  border-radius: 6px;
+  font-weight: 600;
 }
 
-.discret   { color: var(--encre-douce); font-size: .9rem; }
-.ecran     { display: none; }
+.discret { color: var(--encre-douce); font-size: .875rem; }
+.ecran   { display: none; }
 .ecran.actif { display: block; }
-[hidden]   { display: none !important; }
+[hidden] { display: none !important; }
 
-/* ---------------------------------------------------------------- connexion */
+/* Un contour visible et cohérent : le supprimer rendrait l'interface
+   inutilisable sans souris. */
+:focus-visible {
+  outline: 2.5px solid var(--violet-vif);
+  outline-offset: 2px;
+  border-radius: var(--rayon-s);
+}
+
+/* ------------------------------------------------------------ connexion --- */
+
+#ecran-connexion.actif {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;   /* évite le saut dû à la barre d'adresse mobile */
+  padding: var(--e4);
+  position: relative;
+  overflow: hidden;
+  background: var(--fond);
+}
+
+/* Deux halos colorés en fond : ils donnent de la profondeur sans qu'on
+   remarque le procédé, et ne coûtent aucun octet de plus. */
+#ecran-connexion.actif::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(680px 420px at 12% -8%,
+      color-mix(in srgb, var(--violet) 32%, transparent), transparent 65%),
+    radial-gradient(560px 380px at 92% 108%,
+      color-mix(in srgb, var(--ambre) 22%, transparent), transparent 62%);
+  pointer-events: none;
+}
+
+/* Repli pour les navigateurs sans color-mix : un fond uni vaut mieux qu'un
+   halo absent qui laisserait la carte flotter sur du vide. */
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  #ecran-connexion.actif::before {
+    background: radial-gradient(680px 420px at 12% -8%,
+                  var(--violet-pale), transparent 65%);
+  }
+}
 
 .connexion {
-  max-width: 22rem;
-  margin: 3rem auto;
-  padding: 2rem 1.5rem;
+  position: relative;
+  width: 100%;
+  max-width: 23.5rem;
+  padding: var(--e6) var(--e5) var(--e5);
   background: var(--papier);
-  border-radius: var(--rayon);
   border: 1px solid var(--trait);
+  border-radius: var(--rayon-l);
+  box-shadow: var(--ombre-3);
+  animation: apparait 320ms cubic-bezier(.2, .9, .25, 1);
 }
 
-.connexion h1 { text-align: center; margin-bottom: .15rem; }
-.sous-titre   { text-align: center; color: var(--encre-douce); margin: 0 0 1.75rem; }
+@keyframes apparait {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Marque dessinée en CSS : aucune image à télécharger, rendu net à toute
+   résolution. */
+.marque {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto var(--e4);
+  font-size: 1.625rem;
+  font-weight: 750;
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
+  border-radius: 17px;
+  box-shadow: var(--ombre-violet);
+  animation: respire 4.5s ease-in-out infinite;
+}
+
+@keyframes respire {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+.connexion h1 {
+  text-align: center;
+  font-size: 1.625rem;
+  margin-bottom: var(--e1);
+  /* Le titre porte le dégradé de marque : un détail, mais c'est ce genre de
+     détail qui distingue une interface travaillée d'une interface fonctionnelle. */
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Repli si le dégradé sur texte n'est pas géré : sans cela, le titre
+   disparaîtrait purement et simplement. */
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .connexion h1 { color: var(--violet); }
+}
+
+.sous-titre {
+  text-align: center;
+  color: var(--encre-douce);
+  font-size: .9375rem;
+  margin: 0 0 var(--e6);
+}
 
 label {
   display: block;
-  font-size: .875rem;
-  font-weight: 600;
-  margin: 1rem 0 .35rem;
+  font-size: .8125rem;
+  font-weight: 650;
+  color: var(--encre-douce);
+  margin: var(--e4) 0 var(--e2);
+  letter-spacing: .015em;
 }
 
 input, select {
   width: 100%;
-  padding: .7rem .8rem;
-  font-size: 1rem;
-  font-family: inherit;
+  padding: .8125rem .9375rem;
+  font: inherit;
   color: var(--encre);
   background: var(--papier);
-  border: 1px solid var(--trait);
-  border-radius: var(--rayon);
+  border: 2px solid var(--trait);
+  border-radius: var(--rayon-s);
+  transition: border-color var(--transition-douce),
+              box-shadow var(--transition-douce);
 }
+
+input:hover, select:hover { border-color: var(--trait-fort); }
 
 input:focus, select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-  border-color: var(--accent);
+  outline: none;
+  border-color: var(--violet);
+  box-shadow: 0 0 0 4px var(--violet-ombre);
 }
 
-button {
-  font-family: inherit;
-  font-size: 1rem;
-  cursor: pointer;
-  border-radius: var(--rayon);
+/* Flèche en SVG inline : aucune requête réseau. */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%236d3bd4' d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right .9375rem center;
+  background-size: 12px;
+  padding-right: 2.75rem;
 }
+
+button { font: inherit; cursor: pointer; border-radius: var(--rayon-s); }
 
 .principal {
+  position: relative;
   width: 100%;
-  margin-top: 1.5rem;
-  padding: .85rem;
-  font-weight: 600;
+  margin-top: var(--e5);
+  padding: .875rem;
+  font-size: 1rem;
+  font-weight: 650;
   color: #fff;
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
   border: none;
-  min-height: 44px;             /* cible tactile confortable */
+  min-height: 48px;
+  overflow: hidden;
+  box-shadow: var(--ombre-violet);
+  transition: transform var(--transition), box-shadow var(--transition),
+              filter var(--transition);
 }
 
-.principal:disabled { opacity: .55; cursor: progress; }
+/* Reflet qui traverse le bouton au survol : purement décoratif, et c'est
+   assumé — un bouton qui ne répond à rien paraît mort. */
+.principal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%,
+              rgba(255, 255, 255, .28) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 620ms ease;
+}
+.principal:hover:not(:disabled)::after { transform: translateX(100%); }
+
+.principal:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px var(--violet-ombre);
+  filter: brightness(1.06);
+}
+
+/* Le bouton revient sous le doigt : assez pour confirmer le geste, trop peu
+   pour déplacer la cible. */
+.principal:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px var(--violet-ombre);
+}
+.principal:disabled { opacity: .6; cursor: progress; }
 
 .lien {
   background: none;
   border: none;
   color: var(--encre-douce);
-  text-decoration: underline;
-  padding: .5rem;
+  font-size: .875rem;
+  font-weight: 550;
+  padding: var(--e2) var(--e3);
+  border-radius: var(--rayon-s);
+  transition: background var(--transition), color var(--transition);
 }
+.lien:hover { background: var(--violet-pale); color: var(--violet); }
 
 .aide {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
+  margin-top: var(--e5);
+  padding-top: var(--e4);
   border-top: 1px solid var(--trait);
-  font-size: .8rem;
+  font-size: .8125rem;
   color: var(--encre-douce);
   text-align: center;
+  line-height: 1.9;
 }
 
 .erreur {
-  margin-top: 1rem;
-  padding: .7rem .85rem;
-  font-size: .9rem;
-  color: var(--refus);
-  background: var(--refus-fond);
-  border-radius: var(--rayon);
+  margin-top: var(--e4);
+  padding: .8125rem .9375rem;
+  font-size: .875rem;
+  font-weight: 550;
+  color: var(--corail);
+  background: var(--corail-fond);
+  border: 1.5px solid var(--corail-trait);
+  border-radius: var(--rayon-s);
+  animation: secousse 400ms;
 }
 
-/* ------------------------------------------------------------------ entête */
+@keyframes secousse {
+  0%, 100% { transform: none; }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+/* -------------------------------------------------------------- entête --- */
 
 .entete {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: .85rem 1rem;
-  background: var(--papier);
+  gap: var(--e4);
+  padding: var(--e3) var(--e4);
+  background: color-mix(in srgb, var(--papier) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
   border-bottom: 1px solid var(--trait);
 }
 
-.entete strong { display: block; }
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .entete { background: var(--papier); }
+}
+
+.entete .identite-bloc {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+}
+
+/* Pastille d'initiales : identifie le groupe d'un coup d'œil, sans image. */
+.pastille {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  font-size: .875rem;
+  font-weight: 750;
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
+  border-radius: 11px;
+  box-shadow: 0 2px 8px var(--violet-ombre);
+}
+
+.entete .textes { min-width: 0; }
+
+.entete strong {
+  display: block;
+  font-size: .9375rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entete .discret {
+  font-size: .75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* -------------------------------------------------------------- onglets --- */
 
 .onglets {
+  position: sticky;
+  top: 63px;
+  z-index: 19;
   display: flex;
-  gap: .25rem;
+  gap: var(--e1);
   overflow-x: auto;
-  padding: .5rem 1rem;
-  background: var(--papier);
+  padding: var(--e2) var(--e4);
+  background: color-mix(in srgb, var(--papier) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
   border-bottom: 1px solid var(--trait);
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 .onglets::-webkit-scrollbar { display: none; }
 
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .onglets { background: var(--papier); }
+}
+
 .onglet {
   flex: 0 0 auto;
-  padding: .55rem .9rem;
+  padding: var(--e2) var(--e4);
+  font-size: .875rem;
+  font-weight: 600;
   color: var(--encre-douce);
   background: none;
   border: none;
   white-space: nowrap;
-  min-height: 44px;
+  min-height: 40px;
+  border-radius: 999px;
+  transition: color var(--transition), background var(--transition),
+              transform var(--transition);
 }
+
+.onglet:hover { color: var(--violet); background: var(--violet-pale); }
+.onglet:active { transform: scale(.96); }
 
 .onglet.actif {
-  color: var(--accent);
-  font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--accent);
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
+  font-weight: 650;
+  box-shadow: 0 2px 10px var(--violet-ombre);
 }
 
-main { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+main {
+  max-width: 54rem;
+  margin: 0 auto;
+  padding: var(--e5) var(--e4) var(--e7);
+}
 
-/* ------------------------------------------------------------------ cartes */
+/* --------------------------------------------------------------- cartes --- */
 
 .carte {
-  padding: 1rem;
-  margin-bottom: .75rem;
+  position: relative;
+  padding: var(--e5);
+  margin-bottom: var(--e4);
   background: var(--papier);
   border: 1px solid var(--trait);
   border-radius: var(--rayon);
+  box-shadow: var(--ombre-1);
+  overflow: hidden;
+  transition: box-shadow var(--transition-douce);
+  animation: monte-carte 320ms cubic-bezier(.2, .9, .25, 1) backwards;
 }
 
+/* Les cartes entrent en cascade : l'œil suit la page au lieu de la recevoir
+   d'un bloc. Le délai reste court — au-delà, on attend. */
+.carte:nth-child(1) { animation-delay: 0ms; }
+.carte:nth-child(2) { animation-delay: 55ms; }
+.carte:nth-child(3) { animation-delay: 110ms; }
+.carte:nth-child(4) { animation-delay: 165ms; }
+
+@keyframes monte-carte {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.carte:hover { box-shadow: var(--ombre-2); }
+
+/* Filet coloré en tête de carte : signe la section sans ajouter de texte. */
+.carte > h2::before {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 3px;
+  margin-bottom: var(--e3);
+  background: linear-gradient(90deg, var(--violet-vif), var(--ambre));
+  border-radius: 2px;
+}
+
+.carte > .discret { margin: 0 0 var(--e4); }
+
+/* Chiffres clés. `auto-fit` plutôt qu'un nombre fixe de colonnes : la grille
+   s'adapte au contenu comme à la largeur, sans point de rupture à maintenir. */
 .grille {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: .75rem;
-  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: var(--e3);
+  margin-bottom: var(--e4);
 }
 
 .chiffre {
-  padding: 1rem;
+  position: relative;
+  padding: var(--e4) var(--e4) var(--e4) calc(var(--e4) + 4px);
   background: var(--papier);
   border: 1px solid var(--trait);
   border-radius: var(--rayon);
+  box-shadow: var(--ombre-1);
+  overflow: hidden;
+  transition: box-shadow var(--transition), transform var(--transition);
 }
+
+/* Barre verticale colorée : repère visuel fort pour un coût nul. */
+.chiffre::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--violet-vif), var(--violet-sombre));
+}
+
+.chiffre:hover { box-shadow: var(--ombre-2); transform: translateY(-3px); }
 
 .chiffre .valeur {
   display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;  /* colonnes de chiffres alignées */
-  line-height: 1.2;
+  font-size: 1.75rem;
+  font-weight: 750;
+  letter-spacing: -.03em;
+  /* Chiffres à chasse fixe : les colonnes de montants s'alignent, et un total
+     ne « danse » pas quand il change. */
+  font-variant-numeric: tabular-nums;
+  line-height: 1.12;
 }
 
 .chiffre .etiquette {
   display: block;
-  font-size: .8rem;
+  font-size: .8125rem;
   color: var(--encre-douce);
-  margin-top: .2rem;
+  margin-top: var(--e1);
+  font-weight: 550;
 }
 
-/* ------------------------------------------------------------------ lignes */
+/* --------------------------------------------------------------- lignes --- */
 
 .ligne {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .75rem;
-  padding: .8rem 0;
+  gap: var(--e3);
+  padding: var(--e3) var(--e2);
+  margin: 0 calc(var(--e2) * -1);
   border-bottom: 1px solid var(--trait);
+  border-radius: var(--rayon-s);
+  transition: background var(--transition);
 }
+.ligne:hover { background: var(--fond); }
 .ligne:last-child { border-bottom: none; }
 
-.ligne .intitule { font-weight: 600; }
-.ligne .detail   { font-size: .85rem; color: var(--encre-douce); }
+.ligne > div { min-width: 0; }
+
+.ligne .intitule {
+  display: block;
+  font-weight: 650;
+  font-size: .9375rem;
+}
+
+.ligne .detail {
+  display: block;
+  font-size: .8125rem;
+  color: var(--encre-douce);
+  margin-top: 2px;
+}
 
 .montant {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+  letter-spacing: -.015em;
 }
 
+/* Pastilles d'état : fond teinté ET bordure assortie, pour rester lisibles
+   quand la couleur seule ne suffit pas (daltonisme, écran délavé). */
 .etat {
   display: inline-block;
-  padding: .15rem .5rem;
+  padding: .25rem .625rem;
   font-size: .75rem;
-  font-weight: 600;
+  font-weight: 700;
+  white-space: nowrap;
   border-radius: 999px;
+  border: 1.5px solid transparent;
+  letter-spacing: .01em;
 }
-.etat.regle     { color: var(--regle);   background: var(--regle-fond); }
-.etat.attente   { color: var(--attente); background: var(--attente-fond); }
-.etat.refus     { color: var(--refus);   background: var(--refus-fond); }
+.etat.regle   { color: var(--menthe); background: var(--menthe-fond); border-color: var(--menthe-trait); }
+.etat.attente { color: var(--ambre);  background: var(--ambre-fond);  border-color: var(--ambre-trait); }
+.etat.refus   { color: var(--corail); background: var(--corail-fond); border-color: var(--corail-trait); }
 
 .secondaire {
-  padding: .5rem .9rem;
-  color: var(--accent);
+  flex: 0 0 auto;
+  padding: .5625rem .9375rem;
+  font-size: .875rem;
+  font-weight: 650;
+  color: var(--violet);
   background: var(--papier);
-  border: 1px solid var(--accent);
-  min-height: 44px;
+  border: 2px solid var(--trait-fort);
+  min-height: 42px;
+  transition: border-color var(--transition), background var(--transition),
+              transform var(--transition);
 }
 
-/* Barré pour un versement annulé : il reste VISIBLE. L'effacer masquerait une
-   part de la piste d'audit — l'annulation fait partie de l'histoire du compte. */
-.annule { text-decoration: line-through; opacity: .6; }
+.secondaire:hover:not(:disabled) {
+  border-color: var(--violet);
+  background: var(--violet-pale);
+  transform: translateY(-1px);
+}
+.secondaire:active:not(:disabled) { transform: translateY(0); }
+.secondaire:disabled { opacity: .55; cursor: progress; }
+
+/* Un versement annulé reste VISIBLE, barré. L'effacer masquerait une part de
+   la piste d'audit — l'annulation fait partie de l'histoire du compte. */
+.annule { text-decoration: line-through; opacity: .5; }
 
 .avertissement {
-  padding: .85rem 1rem;
-  margin-bottom: 1rem;
-  color: var(--attente);
-  background: var(--attente-fond);
-  border-radius: var(--rayon);
-  font-size: .9rem;
+  display: flex;
+  gap: var(--e3);
+  align-items: flex-start;
+  padding: var(--e4);
+  margin-bottom: var(--e4);
+  color: var(--ambre);
+  background: var(--ambre-fond);
+  border: 1.5px solid var(--ambre-trait);
+  border-radius: var(--rayon-s);
+  font-size: .875rem;
+  font-weight: 550;
+  line-height: 1.5;
 }
 
+.avertissement::before {
+  content: "!";
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: .8125rem;
+  font-weight: 800;
+  color: var(--ambre-fond);
+  background: var(--ambre);
+  border-radius: 50%;
+}
+
+/* Un écran vide EXPLIQUE, il ne se tait pas. « Aucun impayé » est une bonne
+   nouvelle : elle se dit, avec le total encaissé en regard. */
 .vide {
-  padding: 2rem 1rem;
+  padding: var(--e7) var(--e4);
   text-align: center;
   color: var(--encre-douce);
+}
+.vide p { margin: 0 0 var(--e2); }
+.vide p:last-child { margin: 0; }
+.vide strong {
+  display: block;
+  color: var(--encre);
+  font-size: 1.0625rem;
+  margin-bottom: var(--e2);
 }
 
 /* Message transitoire, en bas d'écran pour rester sous le pouce. */
 .message {
   position: fixed;
   left: 50%;
-  bottom: 1rem;
+  bottom: var(--e5);
   transform: translateX(-50%);
-  max-width: calc(100vw - 2rem);
-  padding: .8rem 1.1rem;
+  max-width: calc(100vw - var(--e6));
+  padding: .875rem 1.25rem;
+  font-size: .9375rem;
+  font-weight: 600;
   color: #fff;
-  background: var(--encre);
-  border-radius: var(--rayon);
-  box-shadow: 0 4px 16px rgb(0 0 0 / .18);
-  z-index: 10;
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
+  border-radius: 999px;
+  box-shadow: var(--ombre-3);
+  z-index: 50;
+  animation: monte 280ms cubic-bezier(.2, .9, .25, 1);
 }
-.message.succes { background: var(--regle); }
-.message.echec  { background: var(--refus); }
+
+@keyframes monte {
+  from { opacity: 0; transform: translate(-50%, 16px) scale(.95); }
+  to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.message.succes { background: linear-gradient(135deg, #16b380, var(--menthe)); }
+.message.echec  { background: linear-gradient(135deg, #f0566d, var(--corail)); }
 
 /* Formulaire de saisie : en flux, jamais en fenêtre modale. Une modale sur
    téléphone masque le contexte et se ferme par accident. */
-.formulaire { padding: 1rem; background: var(--papier);
-              border: 1px solid var(--trait); border-radius: var(--rayon); }
+.formulaire {
+  padding: var(--e5);
+  background: var(--papier);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre-1);
+  animation: monte-carte 320ms cubic-bezier(.2, .9, .25, 1) backwards;
+}
+
+.formulaire > h2::before {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 3px;
+  margin-bottom: var(--e3);
+  background: linear-gradient(90deg, var(--violet-vif), var(--ambre));
+  border-radius: 2px;
+}
 
 .rappel {
-  padding: .8rem;
-  margin: .75rem 0;
-  background: var(--fond);
-  border-radius: var(--rayon);
-  font-size: .9rem;
+  padding: var(--e4);
+  margin: var(--e4) 0;
+  background: var(--violet-pale);
+  border: 1px solid color-mix(in srgb, var(--violet) 18%, transparent);
+  border-radius: var(--rayon-s);
+  font-size: .875rem;
 }
-.rappel .ligne { padding: .3rem 0; border: none; }
 
-.duo { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-@media (max-width: 380px) { .duo { grid-template-columns: 1fr; } }
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .rappel { border-color: var(--trait); }
+}
+
+.rappel .ligne { padding: var(--e1) 0; margin: 0; border: none; }
+.rappel .ligne:hover { background: none; }
+.rappel .ligne:last-child {
+  padding-top: var(--e2);
+  margin-top: var(--e1);
+  border-top: 1px solid color-mix(in srgb, var(--violet) 20%, transparent);
+}
+
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
+
+/* Sur écran étroit, deux champs côte à côte deviennent trop serrés pour une
+   saisie au pouce. */
+@media (max-width: 400px) {
+  .duo { grid-template-columns: 1fr; }
+  main { padding-left: var(--e3); padding-right: var(--e3); }
+  .carte, .formulaire { padding: var(--e4); }
+  .chiffre .valeur { font-size: 1.5rem; }
+}
+
+@media (min-width: 900px) {
+  .grille { grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)); }
+}
+
+/* Respect des préférences d'accessibilité : certains utilisateurs souffrent
+   physiquement des animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Impression : le rapport d'assemblée est fait pour être lu devant le groupe,
+   parfois sur papier. */
+@media print {
+  .entete, .onglets, .message, button { display: none !important; }
+  body { background: #fff; color: #000; }
+  .carte { box-shadow: none; border-color: #ccc; page-break-inside: avoid;
+           animation: none; }
+  main { max-width: none; padding: 0; }
+}
