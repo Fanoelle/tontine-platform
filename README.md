@@ -207,11 +207,11 @@ Comptes de démonstration — mot de passe `tontine2026` :
 | **Conception** | Cahier des charges, modèle de données, diagrammes, décisions | ✅ terminé |
 | **V1 — Schéma** | 11 tables, 3 vues, 19 déclencheurs ; les 10 invariants tenus par la base ; jeu de démonstration 12 membres | ✅ terminé |
 | **V2 — Fondations API** | NestJS, `pg`, authentification, garde globale, cloisonnement par jeton | ⚠️ code écrit, **jamais compilé ni testé** |
-| **V3 — Groupes & membres** | CRUD groupes, règles datées, membres, rôles | ⏳ à venir |
-| **V4 — Journal & cotisations** | Saisie d'un versement, partiels, correction par écriture inverse, impayés | ⏳ à venir |
-| **V5 — Tour de rôle ROSCA** | Ordre de passage, tour courant, remise de la cagnotte | ⏳ à venir |
-| **V6 — Restitution** | Relevé individuel, situation de caisse, tableau de bord | ⏳ à venir |
-| **V7 — Recette** | Scénario d'acceptation de bout en bout | ⏳ à venir |
+| **V4 — Journal & cotisations** | `enregistrer_versement`, `annuler_versement`, `dispenser_echeance` | ✅ terminé (SQL) |
+| **V5 — Tour de rôle ROSCA** | `remettre_cagnotte`, `tour_en_cours`, refus si cagnotte incomplète | ✅ terminé (SQL) |
+| **V6 — Restitution** | Impayés, situation de caisse, recouvrement, tableau de bord, relevé | ✅ terminé (SQL) |
+| **V7 — Recette** | Cycle complet de 12 tours, propriétés vérifiées à chaque tour | ✅ terminé |
+| **V3 — Écrans** | Interface React sur les fonctions ci-dessus | ⏳ à venir |
 | **Jalon 2** | Prêts, épargne ASCA, aides, moteur d'anomalies, notifications | ⏳ à venir |
 | **Jalon 3** | Rapprochement Mobile Money, WhatsApp, exports, archivage | ⏳ à venir |
 

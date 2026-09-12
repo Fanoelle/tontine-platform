@@ -180,6 +180,18 @@ commande_verifier() {
   succès 'tous les invariants tiennent'
 }
 
+commande_recette() {
+  conteneur_tourne || erreur "le conteneur n'est pas démarré — lancez : $0 demarrer"
+
+  # La recette CONSOMME le jeu de données : elle mène le cycle jusqu'à sa
+  # clôture. On repart donc d'un état neuf, sans quoi un second passage
+  # trouverait un cycle déjà clôturé et échouerait pour une mauvaise raison.
+  commande_reinitialiser > /dev/null
+
+  bannière 'Recette — critère du jalon 1'
+  psql_base -q < "$RACINE/db/recette/001_cycle_complet.sql"
+}
+
 commande_aide() {
   cat <<'AIDE'
 Usage : ./scripts/db.sh <commande>
@@ -188,6 +200,7 @@ Usage : ./scripts/db.sh <commande>
   arreter         Arrête le conteneur en conservant les données
   reinitialiser   Vide le schéma et réapplique tout
   verifier        Éprouve les invariants : tente des violations, attend un refus
+  recette         Mène un cycle ROSCA complet et vérifie le critère du jalon 1
   console         Ouvre une console psql
   tester          Vérifie la connexion
   supprimer       Supprime le conteneur et ses données (confirmation demandée)
@@ -199,6 +212,7 @@ case "${1:-aide}" in
   arreter)       commande_arreter ;;
   reinitialiser) commande_reinitialiser ;;
   verifier)      commande_verifier ;;
+  recette)       commande_recette ;;
   console)       commande_console ;;
   tester)        commande_tester ;;
   supprimer)     commande_supprimer ;;
