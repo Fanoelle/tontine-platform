@@ -1,0 +1,319 @@
+/* ==========================================================================
+   Interface de la plateforme de tontines
+
+   CONÇUE POUR LE TÉLÉPHONE D'ABORD (N-USG-01, écrans ≥ 360 px). Une colonne,
+   cibles tactiles d'au moins 44 px, aucun tableau large : les listes sont des
+   cartes empilées, qui restent lisibles à 360 px comme à 1200.
+
+   AUCUNE POLICE DISTANTE, AUCUNE IMAGE (N-USG-02). Les polices système
+   s'affichent instantanément et ne coûtent aucun octet. Sur une connexion
+   lente, une police distante retarde le premier rendu de plusieurs secondes.
+   ========================================================================== */
+
+:root {
+  --encre:        #1a1a1a;
+  --encre-douce:  #5a5a5a;
+  --papier:       #ffffff;
+  --fond:         #f4f2ee;
+  --trait:        #ddd8d0;
+
+  /* Le vert porte l'acquis, l'ambre l'attente, le rouge le refus. Trois
+     couleurs suffisent : au-delà, la signification se dilue. */
+  --regle:        #1d7a4c;
+  --regle-fond:   #e8f4ed;
+  --attente:      #a8700a;
+  --attente-fond: #fbf2e0;
+  --refus:        #a62828;
+  --refus-fond:   #fbeaea;
+
+  --accent:       #1d5a8a;
+  --rayon:        10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;              /* 16 px : en deçà, iOS zoome à la saisie. */
+  line-height: 1.5;
+  color: var(--encre);
+  background: var(--fond);
+}
+
+h1, h2, h3 { margin: 0 0 .5rem; line-height: 1.25; }
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.2rem; }
+h3 { font-size: 1rem; }
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .9em;
+  background: var(--fond);
+  padding: .1em .35em;
+  border-radius: 4px;
+}
+
+.discret   { color: var(--encre-douce); font-size: .9rem; }
+.ecran     { display: none; }
+.ecran.actif { display: block; }
+[hidden]   { display: none !important; }
+
+/* ---------------------------------------------------------------- connexion */
+
+.connexion {
+  max-width: 22rem;
+  margin: 3rem auto;
+  padding: 2rem 1.5rem;
+  background: var(--papier);
+  border-radius: var(--rayon);
+  border: 1px solid var(--trait);
+}
+
+.connexion h1 { text-align: center; margin-bottom: .15rem; }
+.sous-titre   { text-align: center; color: var(--encre-douce); margin: 0 0 1.75rem; }
+
+label {
+  display: block;
+  font-size: .875rem;
+  font-weight: 600;
+  margin: 1rem 0 .35rem;
+}
+
+input, select {
+  width: 100%;
+  padding: .7rem .8rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: var(--encre);
+  background: var(--papier);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+}
+
+input:focus, select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+button {
+  font-family: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: var(--rayon);
+}
+
+.principal {
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: .85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  min-height: 44px;             /* cible tactile confortable */
+}
+
+.principal:disabled { opacity: .55; cursor: progress; }
+
+.lien {
+  background: none;
+  border: none;
+  color: var(--encre-douce);
+  text-decoration: underline;
+  padding: .5rem;
+}
+
+.aide {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--trait);
+  font-size: .8rem;
+  color: var(--encre-douce);
+  text-align: center;
+}
+
+.erreur {
+  margin-top: 1rem;
+  padding: .7rem .85rem;
+  font-size: .9rem;
+  color: var(--refus);
+  background: var(--refus-fond);
+  border-radius: var(--rayon);
+}
+
+/* ------------------------------------------------------------------ entête */
+
+.entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  background: var(--papier);
+  border-bottom: 1px solid var(--trait);
+}
+
+.entete strong { display: block; }
+
+.onglets {
+  display: flex;
+  gap: .25rem;
+  overflow-x: auto;
+  padding: .5rem 1rem;
+  background: var(--papier);
+  border-bottom: 1px solid var(--trait);
+  scrollbar-width: none;
+}
+.onglets::-webkit-scrollbar { display: none; }
+
+.onglet {
+  flex: 0 0 auto;
+  padding: .55rem .9rem;
+  color: var(--encre-douce);
+  background: none;
+  border: none;
+  white-space: nowrap;
+  min-height: 44px;
+}
+
+.onglet.actif {
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+main { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+
+/* ------------------------------------------------------------------ cartes */
+
+.carte {
+  padding: 1rem;
+  margin-bottom: .75rem;
+  background: var(--papier);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+}
+
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+
+.chiffre {
+  padding: 1rem;
+  background: var(--papier);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+}
+
+.chiffre .valeur {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;  /* colonnes de chiffres alignées */
+  line-height: 1.2;
+}
+
+.chiffre .etiquette {
+  display: block;
+  font-size: .8rem;
+  color: var(--encre-douce);
+  margin-top: .2rem;
+}
+
+/* ------------------------------------------------------------------ lignes */
+
+.ligne {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .8rem 0;
+  border-bottom: 1px solid var(--trait);
+}
+.ligne:last-child { border-bottom: none; }
+
+.ligne .intitule { font-weight: 600; }
+.ligne .detail   { font-size: .85rem; color: var(--encre-douce); }
+
+.montant {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.etat {
+  display: inline-block;
+  padding: .15rem .5rem;
+  font-size: .75rem;
+  font-weight: 600;
+  border-radius: 999px;
+}
+.etat.regle     { color: var(--regle);   background: var(--regle-fond); }
+.etat.attente   { color: var(--attente); background: var(--attente-fond); }
+.etat.refus     { color: var(--refus);   background: var(--refus-fond); }
+
+.secondaire {
+  padding: .5rem .9rem;
+  color: var(--accent);
+  background: var(--papier);
+  border: 1px solid var(--accent);
+  min-height: 44px;
+}
+
+/* Barré pour un versement annulé : il reste VISIBLE. L'effacer masquerait une
+   part de la piste d'audit — l'annulation fait partie de l'histoire du compte. */
+.annule { text-decoration: line-through; opacity: .6; }
+
+.avertissement {
+  padding: .85rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--attente);
+  background: var(--attente-fond);
+  border-radius: var(--rayon);
+  font-size: .9rem;
+}
+
+.vide {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--encre-douce);
+}
+
+/* Message transitoire, en bas d'écran pour rester sous le pouce. */
+.message {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2rem);
+  padding: .8rem 1.1rem;
+  color: #fff;
+  background: var(--encre);
+  border-radius: var(--rayon);
+  box-shadow: 0 4px 16px rgb(0 0 0 / .18);
+  z-index: 10;
+}
+.message.succes { background: var(--regle); }
+.message.echec  { background: var(--refus); }
+
+/* Formulaire de saisie : en flux, jamais en fenêtre modale. Une modale sur
+   téléphone masque le contexte et se ferme par accident. */
+.formulaire { padding: 1rem; background: var(--papier);
+              border: 1px solid var(--trait); border-radius: var(--rayon); }
+
+.rappel {
+  padding: .8rem;
+  margin: .75rem 0;
+  background: var(--fond);
+  border-radius: var(--rayon);
+  font-size: .9rem;
+}
+.rappel .ligne { padding: .3rem 0; border: none; }
+
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+@media (max-width: 380px) { .duo { grid-template-columns: 1fr; } }

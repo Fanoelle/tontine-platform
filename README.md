@@ -132,7 +132,10 @@ tontine-platform/
 │   │   └── 003_cycle_rosca.sql  Cycle, échéances, cotisations, tour ROSCA
 │   └── seeds/
 │       └── 001_demonstration.sql  Tontine de 12 membres, cycle en cours
-├── web/              Interface React responsive       (V3+)
+├── web/              Interface — 3 fichiers, aucune dépendance
+│   ├── index.html    Structure des écrans
+│   ├── style.css     Téléphone d'abord, polices système
+│   └── app.js        Session, appels API, rendu des 6 écrans
 ├── docs/
 │   ├── cahier-des-charges.md     Exigences codées (F-COT-02, R-01…)
 │   ├── modele-de-donnees.md      MCD, dictionnaire, invariants
@@ -222,6 +225,32 @@ Aucune ne porte d'identifiant de groupe : il vient du jeton (N-SEC-03).
 Le journal n'est pas exposé aux membres : un membre lit son relevé en langage
 courant, jamais le mécanisme comptable (N-USG-05).
 
+### Interface
+
+Une fois l'API démarrée, l'interface est à **http://localhost:3100/** — elle est
+servie par l'API elle-même, en fichiers statiques.
+
+| Écran | Contenu | Rôle |
+|---|---|---|
+| Saisir | Versement en deux gestes, montant prérempli au reste dû | trésorier |
+| Impayés | Qui doit quoi, dispenses comprises | trésorier |
+| Situation | Caisse, recouvrement, tour courant, ma situation | tous |
+| Membres | Qui a versé combien, qui reste devoir | tous |
+| Tours | Ordre de passage et remise de la cagnotte | tous |
+| Opérations | Historique, annulations barrées mais visibles | bureau |
+
+**Ni React, ni étape de construction, ni dépendance.** N-USG-02 impose moins de
+100 ko par écran utile : un bundle React minimal dépasse 140 ko avant la
+première ligne de code métier. Ici l'ensemble — page, style, script — pèse
+**33 ko**, et le fichier servi est le fichier écrit. Le corollaire assumé : pas
+de composants, pas de JSX. Au-delà d'une vingtaine d'écrans, l'arbitrage
+mériterait d'être revu.
+
+Le vocabulaire y est tenu sans exception (N-USG-05) : on *annule* un versement,
+on ne passe pas d'écriture inverse ; on lit « il reste 15 000 F à verser », pas
+« échéance partielle ». Le mot **payer n'apparaît nulle part** — la plateforme
+n'encaisse rien, et le laisser croire tromperait sur la nature du service.
+
 Comptes de démonstration — mot de passe `tontine2026` :
 
 | Téléphone | Membre | Rôles |
@@ -244,7 +273,7 @@ Comptes de démonstration — mot de passe `tontine2026` :
 | **V6 — Restitution** | Impayés, situation de caisse, recouvrement, tableau de bord, relevé | ✅ terminé (SQL) |
 | **V7 — Recette** | Cycle complet de 12 tours, propriétés vérifiées à chaque tour | ✅ terminé |
 | **V3 — Routes métier** | Cotisations, tours, membres, tableau de bord, journal | ✅ terminé — 22 tests verts |
-| **Écrans** | Interface React sur les routes ci-dessus | ⏳ à venir |
+| **Écrans** | Interface web, 6 écrans, servie par l'API | ✅ terminé — 33 ko |
 | **Jalon 2** | Prêts, épargne ASCA, aides, moteur d'anomalies, notifications | ⏳ à venir |
 | **Jalon 3** | Rapprochement Mobile Money, WhatsApp, exports, archivage | ⏳ à venir |
 

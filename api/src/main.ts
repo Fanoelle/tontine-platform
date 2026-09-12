@@ -1,10 +1,24 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'node:path';
 import { AppModule } from './app.module';
 
 async function demarrer(): Promise<void> {
-  const application = await NestFactory.create(AppModule);
+  const application = await NestFactory.create<NestExpressApplication>(AppModule);
   const journal = new Logger('Démarrage');
+
+  // L'interface est servie par l'API elle-même, en fichiers statiques.
+  //
+  // POURQUOI PAS @nestjs/serve-static NI UN SERVEUR SÉPARÉ. Le module dédié
+  // n'apporterait qu'une couche de configuration par-dessus `useStaticAssets`,
+  // déjà fourni par l'adaptateur Express. Un serveur séparé imposerait un
+  // second processus et une configuration CORS — alors que servir la page
+  // depuis la même origine que l'API supprime la question entière.
+  //
+  // Le préfixe /api étant posé ci-dessous, aucune collision n'est possible
+  // entre les routes de l'API et les fichiers de l'interface.
+  application.useStaticAssets(join(__dirname, '..', '..', 'web'));
 
   application.setGlobalPrefix('api');
 
