@@ -124,15 +124,16 @@ précisément ce qui fait la sûreté du modèle.
 
 ```
 tontine-platform/
-├── api/              API NestJS — 42 routes, 59 tests d'intégration
+├── api/              API NestJS — 45 routes, 70 tests d'intégration
 ├── db/
-│   ├── migrations/   14 fichiers, numérotés, idempotents
+│   ├── migrations/   15 fichiers, numérotés, idempotents
 │   │   ├── 001–003   Socle, journal en partie double, cycle ROSCA
 │   │   ├── 004       Utilisateurs et journal d'accès
 │   │   ├── 005–007   Cotisations, tour de rôle, restitution
 │   │   ├── 008–009   Épargne et prêts ASCA, aides mutualistes
 │   │   ├── 010–011   Moteur d'anomalies, métier des prêts et aides
-│   │   └── 012–014   Fin de cycle, Mobile Money, rapports et exports
+│   │   ├── 012–014   Fin de cycle, Mobile Money, rapports et exports
+│   │   └── 015       Notifications : file, plage horaire, rappels
 │   ├── seeds/        4 fichiers — un groupe par mécanisme, dates relatives
 │   └── recette/      3 scénarios d'acceptation, un par jalon
 ├── web/              Interface — 3 fichiers, aucune dépendance
@@ -181,7 +182,7 @@ cd api
 cp .env.example .env          # puis remplacer JWT_SECRET
 npm install
 npm run verifier-types        # compilation TypeScript
-npm run tester                # 59 tests d'intégration contre la vraie base
+npm run tester                # 70 tests d'intégration contre la vraie base
 npm run dev                   # http://localhost:3100/api
 ```
 
@@ -250,9 +251,28 @@ Aucune ne porte d'identifiant de groupe : il vient du jeton (N-SEC-03).
 | `GET /api/redistribution` | bureau | F-EPA-03, F-EPA-04 |
 | `POST /api/reechelonnements/:id` | président | F-PRE-07 |
 | `POST /api/archivage` | président | F-GRP-06 |
+| `GET /api/notifications` | bureau | F-NOT |
+| `GET /api/notifications/mes-notifications` | authentifié | F-NOT |
+| `POST /api/notifications/balayage` | trésorier, président | F-NOT-01, F-COT-06, F-NOT-03 |
+| `POST /api/notifications/accuse-versement` | trésorier | F-NOT-02 |
+| `POST /api/notifications/expedition` | trésorier, président | F-NOT-04, F-NOT-05 |
 
 Le journal n'est pas exposé aux membres : un membre lit son relevé en langage
 courant, jamais le mécanisme comptable (N-USG-05).
+
+### Notifications — une limite assumée
+
+La file d'attente, la plage horaire décente (7 h – 20 h), la déduplication,
+le report progressif et l'abandon après cinq échecs sont implémentés et
+éprouvés. **L'envoi réel ne l'est pas** : aucun service SMTP ni passerelle
+WhatsApp n'était joignable depuis l'environnement de développement, et livrer
+un code d'envoi non testé aurait donné l'illusion que les membres sont
+prévenus alors que personne n'aurait pu dire si un message était parti.
+
+L'expéditeur est enfichable : `ExpediteurJournal` consigne et déclare envoyé,
+en annonçant clairement `aucun envoi réel`. Brancher une vraie passerelle ne
+touche qu'un seul fichier — `notifications.module.ts` — sans rien changer au
+SQL, au service ni aux contrôleurs.
 
 ### Interface
 
@@ -331,7 +351,7 @@ qu'il sert à illustrer.
 | **Écrans** | Interface web, 6 écrans, servie par l'API | ✅ terminé — 33 ko |
 | **Jalon 2** | Prêts ASCA, épargne, aides mutualistes, moteur d'anomalies, écrans | ✅ terminé — 40 tests verts |
 | **Jalon 3** | Rapprochement Mobile Money, exports, rapport d'assemblée, archivage, redistribution | ✅ terminé — 59 tests verts |
-| **Notifications** | Rappels e-mail (F-NOT), canal WhatsApp (F-NOT-05) | ⏳ à venir |
+| **Notifications** | File d'attente, plage horaire décente, rappels, alertes | ✅ terminé — 70 tests verts |
 
 ### Invariants vérifiés en base
 

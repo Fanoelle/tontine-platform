@@ -20,6 +20,7 @@ import { AidesModule } from './aides/aides.module';
 import { AnomaliesModule } from './anomalies/anomalies.module';
 import { CotisationsModule } from './cotisations/cotisations.module';
 import { GroupesModule } from './groupes/groupes.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PretsModule } from './prets/prets.module';
 import { RapportsModule } from './rapports/rapports.module';
 
@@ -34,6 +35,7 @@ import { RapportsModule } from './rapports/rapports.module';
     AidesModule,
     AnomaliesModule,
     RapportsModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JetonGarde },
