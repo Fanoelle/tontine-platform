@@ -4,7 +4,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   ParseUUIDPipe,
   Post,
   Query,
@@ -12,6 +11,7 @@ import {
 import { Roles } from '../authentification/roles.decorator';
 import { SessionCourante, type Session } from '../authentification/session';
 import { GroupesService } from './groupes.service';
+import { Limite } from '../commun/limite.decorateur';
 
 @Controller()
 export class GroupesControleur {
@@ -74,8 +74,8 @@ export class GroupesControleur {
   @Roles('COMMISSAIRE', 'TRESORIER', 'PRESIDENT')
   journal(
     @SessionCourante() session: Session,
-    @Query('limite', new ParseIntPipe({ optional: true })) limite?: number,
+    @Limite() limite: number,
   ) {
-    return this.service.journal(session, limite ?? 50);
+    return this.service.journal(session, limite);
   }
 }

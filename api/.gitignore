@@ -1,0 +1,5 @@
+
+# Interface allégée — artefact régénérable par scripts/construire-web.py.
+# La source reste web/ ; ce dossier ne contient que les mêmes fichiers sans
+# leurs commentaires, pour tenir sous les 100 ko de N-USG-02.
+web-servi/

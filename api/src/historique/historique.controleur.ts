@@ -1,7 +1,8 @@
-import { Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { Roles } from '../authentification/roles.decorator';
 import { SessionCourante, type Session } from '../authentification/session';
 import { HistoriqueService } from './historique.service';
+import { Limite } from '../commun/limite.decorateur';
 
 @Controller('historique')
 export class HistoriqueControleur {
@@ -21,10 +22,13 @@ export class HistoriqueControleur {
   @Get()
   lister(
     @SessionCourante() session: Session,
+    // `limite` avant `categorie` : un paramètre obligatoire ne peut pas suivre
+    // un paramètre optionnel en TypeScript, et le décorateur fournit toujours
+    // une valeur — par défaut s'il le faut.
+    @Limite() limite: number,
     @Query('categorie') categorie?: string,
-    @Query('limite', new ParseIntPipe({ optional: true })) limite?: number,
   ) {
-    return this.service.lister(session, categorie, limite ?? 100);
+    return this.service.lister(session, categorie, limite);
   }
 
   @Get('synthese')
@@ -43,9 +47,9 @@ export class HistoriqueControleur {
   parAuteur(
     @SessionCourante() session: Session,
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('limite', new ParseIntPipe({ optional: true })) limite?: number,
+    @Limite() limite: number,
   ) {
-    return this.service.parAuteur(session, id, limite ?? 100);
+    return this.service.parAuteur(session, id, limite);
   }
 
   /**
@@ -59,8 +63,8 @@ export class HistoriqueControleur {
   @Roles('COMMISSAIRE')
   acces(
     @SessionCourante() session: Session,
-    @Query('limite', new ParseIntPipe({ optional: true })) limite?: number,
+    @Limite() limite: number,
   ) {
-    return this.service.acces(session, limite ?? 100);
+    return this.service.acces(session, limite);
   }
 }

@@ -1,6 +1,7 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
 
@@ -18,7 +19,27 @@ async function demarrer(): Promise<void> {
   //
   // Le préfixe /api étant posé ci-dessous, aucune collision n'est possible
   // entre les routes de l'API et les fichiers de l'interface.
-  application.useStaticAssets(join(__dirname, '..', '..', 'web'));
+  // LE DOSSIER ALLÉGÉ EST PRÉFÉRÉ, AVEC REPLI SUR LA SOURCE.
+  //
+  // `web-servi/` contient les mêmes fichiers sans leurs commentaires : 90,6 ko
+  // deviennent 74,7, ce qui rend de la marge sous les 100 ko de N-USG-02.
+  //
+  // Le repli n'est pas une précaution de façade. Un développeur qui clone le
+  // dépôt n'a pas encore lancé `scripts/construire-web.py` — `web-servi/` est
+  // un artefact, ignoré par git. Sans repli, il verrait une page blanche et
+  // chercherait la panne du mauvais côté.
+  const racineWeb = join(__dirname, '..', '..');
+  const allege = join(racineWeb, 'web-servi');
+  const source = join(racineWeb, 'web');
+  const dossierWeb = existsSync(join(allege, 'index.html')) ? allege : source;
+
+  application.useStaticAssets(dossierWeb);
+  journal.log(
+    dossierWeb === allege
+      ? 'Interface servie depuis web-servi/ (allégée)'
+      : 'Interface servie depuis web/ — lancez scripts/construire-web.py '
+        + 'pour alléger',
+  );
 
   application.setGlobalPrefix('api');
 
