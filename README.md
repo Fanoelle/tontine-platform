@@ -20,7 +20,9 @@ qu'elles ne deviennent des conflits.
    [Rôles et habilitations](#rôles-et-habilitations) ·
    [Cycle de vie d'une cotisation](#cycle-de-vie-dune-cotisation) ·
    [Détection d'anomalies](#détection-danomalies) ·
-   [Notifications](#notifications)
+   [Notifications](#notifications) ·
+   [Reprendre un cahier](#reprendre-un-cahier-existant) ·
+   [Hors ligne](#consultation-hors-ligne)
 4. [Guide de test](#guide-de-test)
    — [Parcours dans l'interface](#parcours-1--interface-trésorière-rosca) ·
    [Tests automatisés](#tests-automatisés) ·
@@ -61,7 +63,7 @@ confiance vérifiable**.
 **Prérequis** : Docker, Node.js 20 ou plus.
 
 ```bash
-# 1. Base de données — conteneur, 15 migrations, 3 groupes de démonstration
+# 1. Base de données — conteneur, 19 migrations, 3 groupes de démonstration
 ./scripts/db.sh demarrer
 
 # 2. API + interface
@@ -267,8 +269,122 @@ d'attente**, pour trois raisons qui se cumulent :
   consigné au cinquième essai. Savoir qu'un membre n'a **jamais** pu être
   prévenu est une information.
 
-⚠️ **L'envoi réel n'est pas implémenté** — voir [Ce qui n'est pas
-fait](#ce-qui-nest-pas-fait).
+#### Envoi réel par courriel
+
+Renseigner `SMTP_HOTE` et `SMTP_EXPEDITEUR` dans `api/.env` suffit à activer
+l'envoi. Sans eux, un expéditeur de développement consigne chaque message avec
+la mention « SIMULÉ » et le déclare envoyé : la mécanique s'éprouve
+entièrement, sans rien prétendre sur le monde extérieur. Le démarrage annonce
+lequel des deux est actif.
+
+Une configuration **incomplète** fait échouer le démarrage plutôt que de
+laisser croire à un envoi — une adresse d'expéditeur manquante ferait rejeter
+chaque message, membre par membre, et l'erreur n'apparaîtrait qu'en fin de
+file.
+
+Le client SMTP est écrit sur `node:net` et `node:tls`, sans `nodemailer`. Pour
+l'éprouver contre un vrai serveur :
+
+```bash
+# Un serveur SMTP de test, dans une console
+cd api && npx ts-node -e "
+  import('./src/notifications/serveur-smtp-test').then(async (m) => {
+    const s = new m.ServeurSmtpTest({});
+    console.log('port', await s.demarrer());
+    setInterval(() => s.recus.forEach((r) => console.log(r.entetes.subject)), 2000);
+  })"
+
+# Dans une autre : l'API pointée dessus
+SMTP_HOTE=127.0.0.1 SMTP_PORT=<le port affiché> \
+SMTP_EXPEDITEUR=tontine@exemple.test npm run demarrer
+```
+
+Les canaux WhatsApp et SMS restent **refusés explicitement** par l'expéditeur
+SMTP : le message est mis en échec avec un motif lisible et reste en file. Le
+marquer « envoyé » ferait disparaître une notification que personne n'a reçue.
+
+#### Rappels automatiques
+
+Un planificateur balaye tous les groupes non archivés toutes les trente
+minutes : il met en file les rappels et les alertes, puis expédie ce qui est
+dû. Actif par défaut — un rappel qu'il faut penser à activer reproduit le
+problème qu'il corrige, le trésorier qui oublie de cliquer étant exactement
+celui dont le groupe a besoin de rappels.
+
+`RAPPELS_AUTOMATIQUES=non` le désactive (tests, instance de secours).
+`RAPPELS_INTERVALLE_MINUTES` et `RAPPELS_JOURS_AVANT` sont bornés : une valeur
+absurde est ramenée, jamais appliquée telle quelle.
+
+Le bouton « Balayer » reste disponible : le trésorier qui vient de saisir dix
+versements veut voir partir les accusés sans attendre le prochain passage.
+Rejouer est sans risque, la déduplication étant portée par des index uniques en
+base et non par la cadence des appels.
+
+---
+
+### Reprendre un cahier existant
+
+Un groupe qui tient son cahier depuis deux ans ne ressaisira pas vingt-quatre
+mois d'historique pour essayer la plateforme. L'onglet **« Reprendre un
+cahier »** apparaît au président et au trésorier d'un groupe **neuf** — il
+disparaît dès qu'un cycle existe.
+
+**L'import ne contourne rien.** Il aurait été plus simple d'insérer les soldes
+finaux dans le journal ; c'eût été une faute. Les versements sont rejoués par
+`enregistrer_versement()`, la fonction du quotidien : un cahier importé produit
+exactement les écritures qu'aurait produites une saisie au fil de l'eau, et le
+journal reste équilibré (R-01). Un contrôleur n'a donc pas à se demander si les
+écritures importées obéissent aux mêmes règles que les autres.
+
+**L'aperçu est la pièce maîtresse.** Le journal étant immuable, un import
+regretté ne se défait pas : il faut détruire le groupe. On dépose le fichier, on
+vérifie ce qui a été lu — membres, ordre de passage, montant total — puis on
+valide.
+
+Le format est un CSV tel qu'un tableur l'exporte. Colonnes reconnues :
+
+| Colonne | Rôle | Obligatoire |
+|---|---|---|
+| `nom` | nom du membre | oui |
+| `telephone` | identifie le membre (deux homonymes sont indiscernables sans lui) | oui |
+| `rang` | ordre de passage — quand ce membre **touche** la cagnotte | non |
+| `tour` | à quel tour se rapporte **ce versement** | non |
+| `date` | JJ/MM/AAAA ou AAAA-MM-JJ | si montant |
+| `montant` | francs entiers : `15 000`, jamais `15 000,00` | non |
+| `moyen` | `especes`, `momo`, `Orange Money`, `virement`… | non |
+
+Point-virgule d'Excel français, BOM de Windows, accents et casse dans les
+en-têtes, noms entre guillemets contenant des virgules : tout cela est lu. En
+revanche **rien n'est deviné** — une colonne `montan` n'est pas reconnue, et un
+moyen de paiement inconnu est refusé plutôt qu'interprété.
+
+Seuls les **ROSCA** sont importables. Un cahier d'ASCA porte des prêts avec
+échéanciers, une mutuelle des délibérations d'aide : ni l'un ni l'autre ne se
+réduit à « qui a versé combien, quand ».
+
+---
+
+### Consultation hors ligne
+
+Une tontine se tient là où le réseau est faible. Le trésorier qui ouvre la
+plateforme devant le groupe pour répondre à « combien ai-je versé ? » ne peut
+pas répondre « attends que ça charge ».
+
+**On lit, on n'écrit pas.** Les écrans consultés — et quelques autres,
+préchargés à la connexion — restent lisibles sans réseau, avec un bandeau qui
+annonce l'âge des données. La **saisie est refusée**, avec un message qui dit
+pourquoi : un versement rejoué plus tard contre une base qui aura changé
+risquerait de compter double dans un journal immuable.
+
+Le cache est cloisonné par membre, vidé à la déconnexion, et une donnée de plus
+de sept jours est écartée — un solde de la semaine dernière présenté comme
+courant tromperait là où un écran vide fait comprendre qu'il faut du réseau.
+
+Pour l'éprouver :
+
+```bash
+node scripts/essai-hors-ligne.js     # 13 vérifications dans Chromium
+```
 
 ---
 
@@ -329,7 +445,7 @@ Connectez-vous en **`+237699330001` / `tontine2026`** (Pauline Kamdem, présiden
 
 ### Tests automatisés
 
-**70 tests d'intégration**, contre la vraie base — jamais contre des doublures.
+**151 tests d'intégration**, contre la vraie base — jamais contre des doublures.
 Les invariants vivant dans le schéma, une doublure testerait la moitié qui ne
 peut pas casser.
 
@@ -344,7 +460,19 @@ cd api && npm run tester
 | `metier.spec.ts` | 13 | Cotisations, impayés, tour de rôle, journal |
 | `jalon2.spec.ts` | 18 | Prêts, aides, anomalies, cloisonnement entre 3 groupes |
 | `jalon3.spec.ts` | 19 | Rapports, exports, Mobile Money, rééchelonnement |
-| `notifications.spec.ts` | 11 | File, plage horaire, déduplication, alertes |
+| `notifications.spec.ts` | 14 | File, plage horaire, déduplication, balayage global |
+| `smtp.spec.ts` | 27 | Dialogue SMTP contre un vrai serveur, sur une vraie prise TCP |
+| `planificateur.spec.ts` | 9 | Chevauchement, exceptions avalées, bornes de configuration |
+| `import.spec.ts` | 42 | Analyse CSV, refus, import complet, équilibre du journal |
+
+**Deux essais s'exécutent dans un vrai navigateur**, hors de Jest. Ils existent
+parce que le code du client se lisait comme correct sans l'être — voir
+[Consultation hors ligne](#consultation-hors-ligne) :
+
+```bash
+node scripts/essai-hors-ligne.js   # 13 vérifications — cache, bandeau, refus de saisie
+node scripts/essai-import.js       # 12 vérifications — aperçu, validation, onglets
+```
 
 > **Les tests consomment le jeu de démonstration** : ils encaissent le tour 3,
 > remettent la cagnotte, octroient des prêts. Sans `reinitialiser` préalable,
@@ -469,7 +597,7 @@ SELECT rubrique, intitule, valeur
 
 ```
 ┌──────────────────┐     HTTPS      ┌──────────────────┐
-│  Web — 3 fichiers│ ─────────────► │   API (NestJS)   │
+│  Web — 4 fichiers│ ─────────────► │   API (NestJS)   │
 │  sans dépendance │ ◄───────────── │   TypeScript     │
 └──────────────────┘   JSON, JWT    └────────┬─────────┘
                                              │ pg (SQL brut)
@@ -544,7 +672,7 @@ Chacun a été éprouvé par une tentative refusée, pas seulement déclaré :
 
 ## Référence des routes
 
-45 routes. **Aucune ne porte d'identifiant de groupe** : il vient du jeton
+52 routes. **Aucune ne porte d'identifiant de groupe** : il vient du jeton
 (N-SEC-03), ce qui rend une fuite transversale structurellement impossible
 plutôt que simplement évitée.
 
@@ -653,6 +781,24 @@ plutôt que simplement évitée.
 
 </details>
 
+<details>
+<summary><b>Reprise d'un cahier</b></summary>
+
+| Route | Rôle requis | Exigence |
+|---|---|---|
+| `POST /api/import/apercu` | président, trésorier | — |
+| `POST /api/import` | président, trésorier | — |
+| `GET /api/import` | authentifié | N-TRC-01 |
+
+`apercu` n'écrit rien : elle rend ce que l'import ferait. Le journal étant
+immuable, voir avant de valider est la seule protection réelle du trésorier.
+
+L'historique des imports est ouvert à **tout membre** : savoir qu'une partie
+des chiffres vient d'un cahier papier plutôt que d'une saisie contrôlée dit
+quelle confiance leur accorder, et cette information appartient au groupe.
+
+</details>
+
 **Le journal n'est pas exposé aux membres** : un membre lit son relevé en
 langage courant, jamais le mécanisme comptable (N-USG-05). De même, les
 anomalies sont réservées au bureau — donner à chacun la liste des écarts
@@ -684,11 +830,18 @@ ROSCA, « Prêts » qu'en ASCA, « Aides » qu'en mutuelle. Afficher un onglet
 « Prêts » à une tontine rotative promettrait une fonction qui n'existe pas pour
 elle — et que la base refuserait.
 
-**Ni React, ni étape de construction, ni dépendance.** N-USG-02 impose moins de
-100 ko par écran utile : un bundle React minimal dépasse 140 ko avant la
-première ligne de code métier. Ici l'ensemble pèse **52 ko**, et le fichier
-servi est le fichier écrit. Corollaire assumé : pas de composants, pas de JSX.
-Au-delà d'une vingtaine d'écrans, l'arbitrage mériterait d'être revu.
+**Ni React, ni dépendance.** N-USG-02 impose moins de 100 ko par écran utile :
+un bundle React minimal dépasse 140 ko avant la première ligne de code métier.
+Ici l'ensemble pèse **86 ko**, soit 14 ko de marge. Corollaire assumé : pas de
+composants, pas de JSX. Au-delà d'une vingtaine d'écrans, l'arbitrage
+mériterait d'être revu — et la marge restante dit qu'on s'en approche.
+
+La seule étape de construction retire les commentaires du code servi
+(`scripts/construire-web.py` : 116 ko de source → 86 ko dans `web-servi/`). Ces
+commentaires expliquent pourquoi le bouton de remise est absent plutôt que
+grisé ; les garder dans la source et les retirer du fichier servi évite d'avoir
+à choisir. L'API sert `web-servi/` s'il existe, `web/` sinon — un dépôt
+fraîchement cloné fonctionne sans rien construire.
 
 Le vocabulaire est tenu sans exception (N-USG-05) : on *annule* un versement, on
 ne passe pas d'écriture inverse ; on lit « il reste 15 000 F à verser », pas
@@ -725,7 +878,7 @@ illustrer.
 
 ```
 tontine-platform/
-├── api/              API NestJS — 45 routes, 70 tests d'intégration
+├── api/              API NestJS — 52 routes, 151 tests d'intégration
 │   └── src/
 │       ├── base/            Pool pg, transactions, vérification R-02
 │       ├── authentification/ Jeton, gardes globales, session
@@ -735,32 +888,42 @@ tontine-platform/
 │       ├── aides/           Demandes, décisions, versements
 │       ├── anomalies/       Balayage, levées
 │       ├── rapports/        Assemblée, exports, Mobile Money
-│       └── notifications/   File, expéditeur enfichable
+│       ├── historique/      Trace immuable des opérations
+│       ├── import/          Reprise d'un cahier : analyse CSV, aperçu
+│       └── notifications/   File, client SMTP, planificateur de rappels
 ├── db/
-│   ├── migrations/   15 fichiers, numérotés, idempotents
+│   ├── migrations/   19 fichiers, numérotés, idempotents
 │   │   ├── 001–003   Socle, journal en partie double, cycle ROSCA
 │   │   ├── 004       Utilisateurs et journal d'accès
 │   │   ├── 005–007   Cotisations, tour de rôle, restitution
 │   │   ├── 008–009   Épargne et prêts ASCA, aides mutualistes
 │   │   ├── 010–011   Moteur d'anomalies, métier des prêts et aides
 │   │   ├── 012–014   Fin de cycle, Mobile Money, rapports et exports
-│   │   └── 015       Notifications : file, plage horaire, rappels
+│   │   ├── 015–017   Notifications, historique immuable et ses déclencheurs
+│   │   ├── 018       Index de performance, calcul des soldes
+│   │   └── 019       Reprise d'un cahier existant
 │   ├── seeds/        4 fichiers — un groupe par mécanisme, dates relatives
 │   └── recette/      3 scénarios d'acceptation, un par jalon
-├── web/              Interface — 3 fichiers, 52 ko, aucune dépendance
+├── web/              Interface — 4 fichiers, 86 ko servis, aucune dépendance
 │   ├── index.html    Structure des écrans
 │   ├── style.css     Téléphone d'abord, polices système
-│   └── app.js        Session, appels API, rendu des 11 écrans
+│   ├── app.js        Session, appels API, rendu des 13 écrans
+│   └── sw.js         Service Worker — ouvre l'application sans réseau
 ├── docs/
 │   ├── cahier-des-charges.md     Exigences codées (F-COT-02, R-01…)
 │   ├── conception-interface.md   Écrans, enchaînement, vocabulaire
 │   ├── modele-de-donnees.md      MCD, dictionnaire, invariants
 │   ├── detection-anomalies.md    Règles et seuils
-│   ├── diagrammes/               Cas d'utilisation, classes, séquences, états
+│   ├── uml/                      11 diagrammes PlantUML + leurs images
+│   ├── diagrammes/               Schémas d'appoint
 │   └── decisions/                Décisions d'architecture argumentées
 └── scripts/
-    ├── db.sh         Pilotage de la base de développement
-    └── dossier-pdf.py Assemble la documentation en un PDF
+    ├── db.sh              Pilotage de la base de développement
+    ├── construire-web.py  Retire les commentaires du code servi
+    ├── generer-uml.sh     Rend les diagrammes PlantUML en images
+    ├── essai-hors-ligne.js  Éprouve le hors-ligne dans Chromium
+    ├── essai-import.js      Éprouve la reprise de cahier dans Chromium
+    └── dossier-pdf.py       Assemble la documentation en un PDF
 ```
 
 ### Commandes disponibles
@@ -824,18 +987,27 @@ tontine-platform/
 
 ## Ce qui n'est pas fait
 
-Trois limites, énoncées plutôt que masquées.
+Quatre limites, énoncées plutôt que masquées.
 
-**L'envoi réel des notifications.** La file d'attente, la plage horaire décente,
-la déduplication, le report progressif et l'abandon après cinq échecs sont
-implémentés et éprouvés. L'envoi ne l'est pas : aucun service SMTP ni passerelle
-WhatsApp n'était joignable depuis l'environnement de développement, et livrer un
-code d'envoi non testé aurait donné l'illusion que les membres sont prévenus
-alors que personne n'aurait pu dire si un message était parti.
+**Le courriel part, WhatsApp et SMS non.** Le client SMTP est écrit et éprouvé
+contre un vrai serveur sur une vraie prise TCP : réponses multi-lignes,
+STARTTLS, authentification PLAIN et LOGIN, encodage MIME des sujets accentués,
+distinction entre refus définitif (5xx) et temporaire (4xx). Il n'a en revanche
+jamais parlé à Gmail ni à un hébergeur réel — aucun n'était joignable depuis
+l'environnement de développement. Ce qui est prouvé, c'est que le protocole est
+correctement parlé.
 
-L'expéditeur est enfichable : `ExpediteurJournal` consigne et annonce `aucun
-envoi réel` jusque dans sa réponse HTTP. Brancher une vraie passerelle ne touche
-qu'un fichier — `notifications.module.ts`.
+WhatsApp et SMS supposent une passerelle payante et une clé d'API. L'expéditeur
+SMTP **refuse explicitement** ces canaux : le message est mis en échec avec un
+motif lisible et reste en file, plutôt que d'être marqué « envoyé » sans que
+personne ne l'ait reçu. Brancher une passerelle ne touche qu'un fichier —
+`notifications.module.ts`.
+
+**L'import ne couvre que les ROSCA.** Un cahier d'ASCA porte des prêts avec
+échéanciers et intérêts, une mutuelle des demandes d'aide et leurs
+délibérations. Ni l'un ni l'autre ne se réduit à la forme « qui a versé combien,
+quand » d'un cahier de tontine ; prétendre les importer produirait des groupes
+amputés dont personne ne verrait ce qui manque.
 
 **Les diagrammes en images dans le PDF.** `scripts/dossier-pdf.py` assemble la
 documentation en un PDF de 48 pages. Les 11 diagrammes y figurent en source
@@ -920,15 +1092,15 @@ documents en un seul fichier de 49 pages — page de garde, sommaire, et les
 | Domaine | État |
 |---|---|
 | Conception | ✅ Cahier des charges, modèle, diagrammes, 3 décisions |
-| Schéma | ✅ 23 tables, 255 fonctions, 12 vues, 15 migrations idempotentes |
+| Schéma | ✅ 23 tables, 255 fonctions, 12 vues, 19 migrations idempotentes |
 | Métier ROSCA | ✅ Cotisations, tour de rôle, corrections, dispenses |
 | Métier ASCA | ✅ Épargne, prêts, échéanciers, rééchelonnement, redistribution |
 | Métier Mutuelle | ✅ Aides, éligibilité consultative, versements |
 | Anomalies | ✅ 6 règles, gravités, levées motivées |
 | Rapports | ✅ Assemblée, exports CSV, rapprochement Mobile Money |
 | Notifications | ⚠️ File et règles éprouvées — **envoi réel non implémenté** |
-| API | ✅ 45 routes, 70 tests d'intégration |
-| Interface | ✅ 11 écrans, 52 ko, sans dépendance |
+| API | ✅ 52 routes, 151 tests d'intégration |
+| Interface | ✅ 13 écrans, 86 ko servis, hors ligne, sans dépendance |
 
 **Critère d'acceptation du jalon 1**, vérifié par `./scripts/db.sh recette` :
 une tontine de 12 membres mène un cycle complet, la caisse reste équilibrée à

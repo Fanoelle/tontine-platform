@@ -29,6 +29,7 @@ interface LigneAuthentification {
   supprime: boolean;
   groupe_nom: string;
   groupe_type: 'ROSCA' | 'ASCA' | 'MUTUELLE';
+  cycle_en_cours: boolean;
   roles: string[];
 }
 
@@ -43,6 +44,8 @@ export interface ResultatConnexion {
     id: string;
     nom: string;
     type: 'ROSCA' | 'ASCA' | 'MUTUELLE';
+    /** Vrai dès qu'un cycle existe — l'import de cahier est alors fermé. */
+    cycle_en_cours: boolean;
   };
 }
 
@@ -61,11 +64,17 @@ export class AuthentificationService {
     adresseIp?: string,
   ): Promise<ResultatConnexion> {
     const compte = await this.base.requeteUne<LigneAuthentification>(
-      `SELECT utilisateur_id, telephone, mot_de_passe_hash, actif,
-              membre_id, groupe_id, nom_complet, statut_membre, supprime,
-              groupe_nom, groupe_type, roles
-         FROM v_authentification
-        WHERE telephone = $1`,
+      // `cycle_en_cours` est calculé ici plutôt qu'ajouté à la vue : il ne sert
+      // qu'à l'interface, qui masque l'onglet « Reprendre un cahier » pour un
+      // groupe déjà en activité. L'ajouter à `v_authentification` ferait payer
+      // ce calcul à tout ce qui lit la vue, pour un besoin d'affichage.
+      `SELECT v.utilisateur_id, v.telephone, v.mot_de_passe_hash, v.actif,
+              v.membre_id, v.groupe_id, v.nom_complet, v.statut_membre,
+              v.supprime, v.groupe_nom, v.groupe_type, v.roles,
+              EXISTS (SELECT 1 FROM cycle c WHERE c.groupe_id = v.groupe_id)
+                AS cycle_en_cours
+         FROM v_authentification v
+        WHERE v.telephone = $1`,
       [telephone],
     );
 
@@ -128,6 +137,7 @@ export class AuthentificationService {
         id: compte.groupe_id,
         nom: compte.groupe_nom,
         type: compte.groupe_type,
+        cycle_en_cours: compte.cycle_en_cours,
       },
     };
   }
