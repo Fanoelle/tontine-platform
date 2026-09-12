@@ -209,9 +209,15 @@ BEGIN
                    (v_ecriture, v_comptes[j],  'CREDIT', v_montant, 2);
 
             INSERT INTO cotisation (echeance_id, montant, date_versement, moyen,
-                                    ecriture_id, saisi_par)
+                                    reference_externe, ecriture_id, saisi_par)
             VALUES (v_echeance, v_montant, v_date,
                     (CASE WHEN j % 3 = 0 THEN 'MOBILE_MONEY' ELSE 'ESPECES' END)::moyen_paiement,
+                    -- Référence d'opérateur pour les seuls versements Mobile
+                    -- Money : c'est la clé du rapprochement (F-TRX-06). Un
+                    -- versement Mobile Money sans référence est invérifiable.
+                    CASE WHEN j % 3 = 0
+                         THEN 'MM' || to_char(v_date, 'YYMMDD') || lpad((i*100+j)::TEXT, 5, '0')
+                    END,
                     v_ecriture, v_tresorier);
         END LOOP;
 
@@ -265,9 +271,12 @@ BEGIN
                (v_ecriture, v_comptes[j], 'CREDIT', v_verse, 2);
 
         INSERT INTO cotisation (echeance_id, montant, date_versement, moyen,
-                                ecriture_id, saisi_par)
+                                reference_externe, ecriture_id, saisi_par)
         VALUES (v_echeance, v_verse, v_date,
                 (CASE WHEN j % 3 = 0 THEN 'MOBILE_MONEY' ELSE 'ESPECES' END)::moyen_paiement,
+                CASE WHEN j % 3 = 0
+                     THEN 'MM' || to_char(v_date, 'YYMMDD') || lpad((300+j)::TEXT, 5, '0')
+                END,
                 v_ecriture, v_tresorier);
     END LOOP;
 
