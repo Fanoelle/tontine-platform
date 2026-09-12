@@ -203,6 +203,56 @@ moyenne est tirée par les valeurs extrêmes, et un seul versement exceptionnel
 rendrait aveugle aux suivants. Minimum 6 versements d'historique — en deçà, un
 nouveau membre serait signalé simplement parce qu'il est nouveau.
 
+### Traçabilité et documents imprimables
+
+**Trois niveaux de trace, et ils ne se confondent pas.**
+
+| Trace | Ce qu'elle prouve | Qui la lit |
+|---|---|---|
+| Journal comptable | Les mouvements d'argent, en partie double | bureau, commissaire |
+| **Historique** | Les **décisions** : dispense, refus de prêt, levée d'anomalie | tout membre |
+| Journal d'accès | Les connexions et les tentatives refusées | commissaire |
+
+L'historique comble un manque réel : le journal prouve qu'un versement a eu
+lieu, mais une dispense accordée ou un prêt refusé ne produisent **aucune
+écriture** — et ce sont les décisions les plus contestables en assemblée.
+
+Il est **alimenté par des déclencheurs**, pas par des appels dans les fonctions
+métier. Un appel dans le code peut être oublié ; une fonction écrite dans six
+mois n'aurait aucune raison de penser à consigner. Un déclencheur sur la table
+capte tout ce qui s'y insère, y compris ce qu'on n'a pas prévu — c'est le
+raisonnement de R-01 appliqué à la traçabilité.
+
+Et il est **immuable** : `UPDATE` et `DELETE` refusés. Une piste d'audit
+modifiable ne prouve rien.
+
+#### L'impression, pensée pour un document qui circule
+
+En assemblée, une feuille passe de main en main, est lue à voix haute, parfois
+contestée sur-le-champ. Trois questions se posent alors, et le document y
+répond seul :
+
+- **De quel groupe ?** — cachet d'initiales encadré comme un tampon, nom du
+  groupe, mécanisme, auteur du document
+- **De quelle date ?** — date et heure d'arrêté, en évidence à droite
+- **Cette feuille est-elle complète ?** — empreinte du tirage en pied de page,
+  identique sur toutes les feuilles d'une même impression
+
+S'y ajoutent une mention de ce que le document **n'est pas** — la plateforme
+n'encaisse rien — et un espace de visa pour le trésorier, le président et le
+commissaire, mais **seulement sur les documents qui engagent** : faire signer
+une liste de membres banaliserait la signature.
+
+> **Pas de numérotation des pages, et c'est vérifié.** `counter(page)` avec
+> `position: fixed` ne s'incrémente qu'en Firefox — Chrome répète « Page 1 » sur
+> chaque feuille. Les margin-boxes `@page` sont derrière un drapeau non activé
+> par défaut dans Chromium. Une pagination **fausse** sur un document qui circule
+> serait pire qu'aucune : elle ferait croire qu'il ne manque rien.
+
+Le bouton « Imprimer ce document » apparaît sur les écrans qui produisent un
+document — pas sur la saisie, où il n'aurait aucun sens.
+
+
 ### Notifications
 
 Rien n'est envoyé au moment de l'événement. Tout passe par une **file
@@ -596,6 +646,10 @@ plutôt que simplement évitée.
 | `POST /api/notifications/balayage` | trésorier, président | F-NOT-01, F-COT-06 |
 | `POST /api/notifications/accuse-versement` | trésorier | F-NOT-02 |
 | `POST /api/notifications/expedition` | trésorier, président | F-NOT-04, F-NOT-05 |
+| `GET /api/historique` | authentifié | N-TRC-01 |
+| `GET /api/historique/synthese` | authentifié | N-TRC-01 |
+| `GET /api/historique/membre/:id` | bureau | N-TRC-01 |
+| `GET /api/historique/acces` | commissaire | N-SEC-06 |
 
 </details>
 

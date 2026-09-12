@@ -26,6 +26,31 @@
 BEGIN;
 
 -- -----------------------------------------------------------------------------
+-- Formatage des montants dans les libellés
+--
+-- « 12 500 F » et non « 12500 XAF ». Le libellé est figé à l'écriture : il doit
+-- donc être lisible DÈS l'écriture, puisqu'on ne le recomposera jamais.
+--
+-- Espace insécable comme séparateur, et le symbole court plutôt que le code
+-- ISO : l'interface écrit « 25 000 F » partout ailleurs, et deux notations pour
+-- la même somme feraient douter qu'il s'agit du même montant.
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION montant_lisible(p_montant BIGINT, p_devise CHAR(3))
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT replace(to_char(p_montant, 'FM999G999G999G999'), ',', E'\u00a0')
+        || E'\u00a0'
+        || CASE p_devise WHEN 'XAF' THEN 'F' ELSE p_devise END;
+$$;
+
+COMMENT ON FUNCTION montant_lisible(BIGINT, CHAR) IS
+    'Montant formaté pour un libellé d''historique : séparateurs insécables et '
+    'symbole court. Figé à l''écriture, donc il doit être lisible dès l''écriture.';
+
+-- -----------------------------------------------------------------------------
 -- Versements et annulations
 -- -----------------------------------------------------------------------------
 
@@ -49,8 +74,8 @@ BEGIN
     PERFORM consigner(
         'VERSEMENT_ENREGISTRE'::type_operation,
         NEW.saisi_par,
-        format('Versement de %s %s enregistré pour %s',
-               NEW.montant, v_devise, v_membre),
+        format('Versement de %s enregistré pour %s',
+               montant_lisible(NEW.montant, v_devise), v_membre),
         NULL, NEW.montant, v_membre_id, NEW.ecriture_id, NEW.echeance_id);
 
     RETURN NULL;
@@ -92,8 +117,8 @@ BEGIN
     PERFORM consigner(
         'VERSEMENT_ANNULE'::type_operation,
         COALESCE(v_auteur, OLD.saisi_par),
-        format('Versement de %s %s annulé pour %s',
-               OLD.montant, v_devise, v_membre),
+        format('Versement de %s annulé pour %s',
+               montant_lisible(OLD.montant, v_devise), v_membre),
         v_motif, OLD.montant, v_membre_id, OLD.ecriture_id, OLD.echeance_id);
 
     RETURN NULL;
@@ -163,8 +188,9 @@ BEGIN
     PERFORM consigner(
         'CAGNOTTE_REMISE'::type_operation,
         v_auteur,
-        format('Cagnotte du tour %s remise à %s : %s %s',
-               NEW.rang, v_benef, NEW.montant_cagnotte, v_devise),
+        format('Cagnotte du tour %s remise à %s : %s',
+               NEW.rang, v_benef,
+               montant_lisible(NEW.montant_cagnotte, v_devise)),
         NULL, NEW.montant_cagnotte, NEW.beneficiaire_id,
         NEW.ecriture_remise_id);
 
@@ -199,8 +225,9 @@ BEGIN
         PERFORM consigner(
             'PRET_DEMANDE'::type_operation,
             NEW.emprunteur_id,
-            format('Prêt de %s %s demandé par %s',
-                   NEW.montant_demande, v_devise, v_emprunteur),
+            format('Prêt de %s demandé par %s',
+                   montant_lisible(NEW.montant_demande, v_devise),
+                   v_emprunteur),
             NEW.motif_demande, NEW.montant_demande, NEW.emprunteur_id,
             NULL, NULL, NEW.id);
         RETURN NULL;
@@ -216,8 +243,9 @@ BEGIN
         PERFORM consigner(
             'PRET_APPROUVE'::type_operation,
             NEW.decide_par,
-            format('Prêt de %s %s accordé à %s',
-                   NEW.montant_accorde, v_devise, v_emprunteur),
+            format('Prêt de %s accordé à %s',
+                   montant_lisible(NEW.montant_accorde, v_devise),
+                   v_emprunteur),
             NEW.motif_decision, NEW.montant_accorde, NEW.emprunteur_id,
             NEW.ecriture_octroi_id, NULL, NEW.id);
 
@@ -225,8 +253,9 @@ BEGIN
         PERFORM consigner(
             'PRET_REFUSE'::type_operation,
             NEW.decide_par,
-            format('Prêt de %s %s refusé à %s',
-                   NEW.montant_demande, v_devise, v_emprunteur),
+            format('Prêt de %s refusé à %s',
+                   montant_lisible(NEW.montant_demande, v_devise),
+                   v_emprunteur),
             NEW.motif_decision, NEW.montant_demande, NEW.emprunteur_id,
             NULL, NULL, NEW.id);
 
@@ -237,9 +266,9 @@ BEGIN
             COALESCE((SELECT r.decide_par FROM reechelonnement r
                        WHERE r.pret_id = NEW.id
                        ORDER BY r.cree_le DESC LIMIT 1), NEW.decide_par),
-            format('Prêt de %s rééchelonné sur %s échéances, %s %s restant dus',
+            format('Prêt de %s rééchelonné sur %s échéances, %s restant dus',
                    v_emprunteur, NEW.nombre_echeances,
-                   NEW.capital_restant_du, v_devise),
+                   montant_lisible(NEW.capital_restant_du, v_devise)),
             (SELECT r.motif FROM reechelonnement r
               WHERE r.pret_id = NEW.id ORDER BY r.cree_le DESC LIMIT 1),
             NEW.capital_restant_du, NEW.emprunteur_id, NULL, NULL, NEW.id);
@@ -273,10 +302,13 @@ BEGIN
     PERFORM consigner(
         'REMBOURSEMENT_ENREGISTRE'::type_operation,
         NEW.saisi_par,
-        format('Remboursement de %s %s reçu de %s%s',
-               NEW.montant_capital + NEW.montant_interet, v_devise, v_emprunteur,
+        format('Remboursement de %s reçu de %s%s',
+               montant_lisible(NEW.montant_capital + NEW.montant_interet,
+                               v_devise),
+               v_emprunteur,
                CASE WHEN NEW.montant_interet > 0
-                    THEN format(' (dont %s d''intérêt)', NEW.montant_interet)
+                    THEN format(' (dont %s d''intérêt)',
+                                montant_lisible(NEW.montant_interet, v_devise))
                     ELSE '' END),
         NULL, NEW.montant_capital + NEW.montant_interet, v_membre_id,
         NEW.ecriture_id, NULL, NEW.pret_id);
@@ -312,8 +344,8 @@ BEGIN
         PERFORM consigner(
             'AIDE_DEMANDEE'::type_operation,
             NEW.beneficiaire_id,
-            format('Aide de %s %s demandée par %s',
-                   NEW.montant_demande, v_devise, v_benef),
+            format('Aide de %s demandée par %s',
+                   montant_lisible(NEW.montant_demande, v_devise), v_benef),
             NEW.motif, NEW.montant_demande, NEW.beneficiaire_id,
             NULL, NULL, NULL, NEW.id);
         RETURN NULL;
@@ -327,10 +359,11 @@ BEGIN
         PERFORM consigner(
             'AIDE_APPROUVEE'::type_operation,
             NEW.decide_par,
-            format('Aide de %s %s accordée à %s%s',
-                   NEW.montant_accorde, v_devise, v_benef,
+            format('Aide de %s accordée à %s%s',
+                   montant_lisible(NEW.montant_accorde, v_devise), v_benef,
                    CASE WHEN NEW.montant_accorde < NEW.montant_demande
-                        THEN format(' (demandé : %s)', NEW.montant_demande)
+                        THEN format(' (demandé : %s)',
+                             montant_lisible(NEW.montant_demande, v_devise))
                         ELSE '' END),
             NEW.motif_decision, NEW.montant_accorde, NEW.beneficiaire_id,
             NULL, NULL, NULL, NEW.id);
@@ -339,8 +372,8 @@ BEGIN
         PERFORM consigner(
             'AIDE_VERSEE'::type_operation,
             NEW.decide_par,
-            format('Aide de %s %s remise à %s',
-                   NEW.montant_accorde, v_devise, v_benef),
+            format('Aide de %s remise à %s',
+                   montant_lisible(NEW.montant_accorde, v_devise), v_benef),
             NEW.motif, NEW.montant_accorde, NEW.beneficiaire_id,
             NEW.ecriture_id, NULL, NULL, NEW.id);
 
@@ -348,8 +381,8 @@ BEGIN
         PERFORM consigner(
             'AIDE_APPROUVEE'::type_operation,
             NEW.decide_par,
-            format('Aide de %s %s refusée à %s',
-                   NEW.montant_demande, v_devise, v_benef),
+            format('Aide de %s refusée à %s',
+                   montant_lisible(NEW.montant_demande, v_devise), v_benef),
             NEW.motif_decision, NEW.montant_demande, NEW.beneficiaire_id,
             NULL, NULL, NULL, NEW.id);
     END IF;
