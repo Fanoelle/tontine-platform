@@ -14,6 +14,12 @@ dist/
 build/
 *.tsbuildinfo
 
+# Interface allégée — artefact régénérable par scripts/construire-web.py.
+# La SOURCE est web/ ; web-servi/ n'en est que la version sans commentaires.
+# Le versionner ferait apparaître les deux dans chaque diff touchant
+# l'interface, et rien ne garantirait qu'ils restent cohérents.
+web-servi/
+
 # Variables d'environnement — ne jamais versionner de secret
 .env
 .env.*

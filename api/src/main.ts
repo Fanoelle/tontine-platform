@@ -24,10 +24,15 @@ async function demarrer(): Promise<void> {
   // `web-servi/` contient les mêmes fichiers sans leurs commentaires : 90,6 ko
   // deviennent 74,7, ce qui rend de la marge sous les 100 ko de N-USG-02.
   //
-  // Le repli n'est pas une précaution de façade. Un développeur qui clone le
-  // dépôt n'a pas encore lancé `scripts/construire-web.py` — `web-servi/` est
-  // un artefact, ignoré par git. Sans repli, il verrait une page blanche et
-  // chercherait la panne du mauvais côté.
+  // Le repli n'est pas une précaution de façade, et il est VÉRIFIÉ : un dépôt
+  // sans `web-servi/` sert bien `web/`, sources commentées comprises.
+  //
+  // Un développeur qui clone le dépôt n'a pas encore lancé
+  // `scripts/construire-web.py`, et `web-servi/` est un artefact que le
+  // `.gitignore` écarte — il l'a d'ailleurs longtemps annoncé sans le faire,
+  // le dossier ayant été versionné par mégarde pendant quatre commits. Sans
+  // repli, ce développeur verrait une page blanche et chercherait la panne du
+  // mauvais côté.
   const racineWeb = join(__dirname, '..', '..');
   const allege = join(racineWeb, 'web-servi');
   const source = join(racineWeb, 'web');
