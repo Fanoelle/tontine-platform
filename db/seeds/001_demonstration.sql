@@ -54,6 +54,29 @@ BEGIN
     DELETE FROM ecriture     WHERE groupe_id = v_groupe;
     DELETE FROM cycle        WHERE groupe_id = v_groupe;
     DELETE FROM compte       WHERE groupe_id = v_groupe;
+
+    -- LES COMPTES DE CONNEXION AUSSI, ET AVANT LES MEMBRES.
+    --
+    -- Sans cette purge, les `utilisateur` du groupe survivaient à la
+    -- destruction de leurs membres : `session_replication_role = replica`
+    -- neutralise les déclencheurs, mais AUSSI la vérification des clés
+    -- étrangères — le ON DELETE RESTRICT ne protégeait donc pas.
+    --
+    -- Il en résultait trois comptes orphelins qui conservaient leurs
+    -- téléphones. Le seed 002 échouait alors sur l'index unique partiel
+    -- `utilisateur_telephone_idx`, aucun compte ROSCA n'était recréé, et la
+    -- connexion à la démonstration renvoyait « Téléphone ou mot de passe
+    -- incorrect » — un message exact mais trompeur, puisque le compte
+    -- n'existait tout simplement plus.
+    --
+    -- Les seeds ASCA et MUTUELLE le faisaient déjà ; celui-ci, écrit avant
+    -- l'introduction de la table `utilisateur`, ne l'avait jamais rattrapé.
+    DELETE FROM journal_acces WHERE utilisateur_id IN (
+        SELECT u.id FROM utilisateur u JOIN membre m ON m.id = u.membre_id
+         WHERE m.groupe_id = v_groupe);
+    DELETE FROM utilisateur WHERE membre_id IN (
+        SELECT id FROM membre WHERE groupe_id = v_groupe);
+
     DELETE FROM membre_role  WHERE membre_id IN (SELECT id FROM membre WHERE groupe_id = v_groupe);
     DELETE FROM membre       WHERE groupe_id = v_groupe;
     DELETE FROM regle_groupe WHERE groupe_id = v_groupe;

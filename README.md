@@ -728,9 +728,31 @@ tontine-platform/
 
 ## Dépannage
 
+> **« Site inaccessible » dans le navigateur ?** C'est presque toujours la base
+> qui s'est arrêtée : l'API ne peut pas s'y connecter, et s'interrompt au
+> démarrage sans jamais écouter le port. Vérifiez d'abord le conteneur —
+> `docker ps -a --filter name=tontine-db` — puis relancez dans l'ordre :
+>
+> ```bash
+> ./scripts/db.sh demarrer     # d'abord la base
+> cd api && npm run dev        # ensuite l'API
+> ```
+>
+> L'API annonce trois lignes quand tout va bien. Si elles n'apparaissent pas,
+> le problème est en amont :
+>
+> ```
+> [BaseService] Connecté en tant que « tontine_app »
+> [BaseService] R-02 vérifié : journal non modifiable par ce rôle
+> [Démarrage]   API à l'écoute sur http://localhost:3100/api
+> ```
+
 | Symptôme | Cause probable | Remède |
 |---|---|---|
-| `EADDRINUSE :::3100` | Une instance tourne déjà | `pkill -f "tontine-platform/api/dist/main"` |
+| **Site inaccessible** | Conteneur arrêté — l'API n'a pas pu joindre la base | `./scripts/db.sh demarrer` puis relancer l'API |
+| `EADDRINUSE :::3100` | Une instance tourne déjà | `pkill -f "api/node_modules/.bin/nest"` |
+| `ECONNREFUSED …:55433` | Base arrêtée | `./scripts/db.sh demarrer` |
+| `npm run dev` tourne mais rien ne répond | Démarré avant la base : `--watch` maintient le processus sans serveur | Arrêter, démarrer la base, relancer |
 | Tests en échec au 2ᵉ passage | Le décor a été consommé | `./scripts/db.sh reinitialiser` |
 | `JWT_SECRET is not defined` | `.env` absent | `cp .env.example .env` dans `api/` |
 | `permission denied for table…` | Migrations partiellement appliquées | `./scripts/db.sh reinitialiser` |
