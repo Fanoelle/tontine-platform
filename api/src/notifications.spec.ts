@@ -272,10 +272,20 @@ describe('Notifications — F-NOT', () => {
       // routes HTTP tirent leur groupe du jeton (N-SEC-03) ; cette méthode
       // n'en a pas, et doit donc parcourir les groupes elle-même.
       const service = app.get(NotificationsService);
+      const base = app.get(BaseService);
       const bilan = await service.balayerTousLesGroupes(10);
 
-      // La base de démonstration porte un ROSCA, un ASCA et une MUTUELLE.
-      expect(bilan.groupes).toBe(3);
+      // COMPTÉ CONTRE LA BASE, et non contre un nombre écrit en dur.
+      // La version précédente attendait « 3 » — le ROSCA, l'ASCA et la
+      // mutuelle de démonstration. Elle a cassé le jour où `import.spec.ts` a
+      // créé un quatrième groupe, alors que le balayage était parfaitement
+      // correct : c'est l'assertion qui décrivait le jeu de données plutôt que
+      // la propriété à garantir, laquelle est « tous les groupes actifs, sans
+      // exception ».
+      const actifs = await base.requeteUne<{ n: string }>(
+        `SELECT count(*) AS n FROM groupe WHERE NOT archive`,
+      );
+      expect(bilan.groupes).toBe(Number(actifs!.n));
 
       // AUCUN GROUPE EN ERREUR. Si une fonction SQL manquait pour l'ASCA ou la
       // mutuelle, elle apparaîtrait ici nommée — et le planificateur aurait

@@ -21,6 +21,7 @@ import { AnomaliesModule } from './anomalies/anomalies.module';
 import { CotisationsModule } from './cotisations/cotisations.module';
 import { GroupesModule } from './groupes/groupes.module';
 import { HistoriqueModule } from './historique/historique.module';
+import { ImportModule } from './import/import.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PretsModule } from './prets/prets.module';
 import { RapportsModule } from './rapports/rapports.module';
@@ -38,6 +39,7 @@ import { RapportsModule } from './rapports/rapports.module';
     RapportsModule,
     NotificationsModule,
     HistoriqueModule,
+    ImportModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JetonGarde },

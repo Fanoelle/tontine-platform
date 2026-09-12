@@ -41,6 +41,14 @@ async function demarrer(): Promise<void> {
         + 'pour alléger',
   );
 
+  // LE CORPS JSON EST PORTÉ À 2 Mo POUR L'IMPORT DE CAHIER. Express plafonne
+  // par défaut à 100 ko, et un cahier de vingt-quatre mois envoyé en base64
+  // dans un JSON dépasse ce seuil. Le contrôleur d'import refuse au-delà d'un
+  // mégaoctet avec un message clair ; ce plafond-ci, plus haut, laisse la
+  // requête arriver jusqu'à lui — sans quoi l'utilisateur recevrait un
+  // « 413 Payload Too Large » brut, sans rien qui lui dise quoi corriger.
+  application.useBodyParser('json', { limit: '2mb' });
+
   application.setGlobalPrefix('api');
 
   // SANS CET APPEL, `onApplicationShutdown` N'EST JAMAIS INVOQUÉ. Nest ne
