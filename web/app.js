@@ -213,6 +213,13 @@ function ongletsVisibles() {
     onglets.push({ cle: 'journal',   nom: 'Opérations' });
   }
 
+  // L'historique est ouvert à TOUS : un membre qui conteste une dispense
+  // doit pouvoir lire qui l'a accordée, et pourquoi.
+  onglets.push({ cle: 'historique', nom: 'Historique' });
+
+  if (bureau) {
+  }
+
   // Le rapprochement Mobile Money n'a de sens que pour le trésorier, qui seul
   // saisit les versements dont il faut vérifier la trace.
   if (aRole('TRESORIER')) {
@@ -247,6 +254,7 @@ const ECRANS = {
   journal:   ecranJournal,
   rapport:       ecranRapport,
   rapprochement: ecranRapprochement,
+  historique:    ecranHistorique,
 };
 
 /* Écrans qui produisent un DOCUMENT — ceux qu'on lit en assemblée ou qu'on
@@ -254,7 +262,7 @@ const ECRANS = {
    n'en a pas sur la moitié des écrans cesse d'être lu. */
 const ECRANS_IMPRIMABLES = [
   'rapport', 'impayes', 'membres', 'journal',
-  'tours', 'prets', 'aides', 'accueil',
+  'tours', 'prets', 'aides', 'accueil', 'historique',
 ];
 
 async function afficher(cle) {
@@ -1250,7 +1258,8 @@ const TITRES_IMPRESSION = {
   rapport:       "Rapport d'assemblée générale",
   anomalies:     'Points à vérifier',
   rapprochement: 'Rapprochement Mobile Money',
-  journal:       'Historique des opérations',
+  journal:       'Journal des opérations',
+  historique:    'Historique des décisions du groupe',
   saisie:        'Saisie de versement',
 };
 
@@ -1323,6 +1332,106 @@ if (window.matchMedia) {
 function imprimer() {
   preparerImpression();
   window.print();
+}
+
+/* ----------------------------------------------------------- historique --- */
+
+/* LA TRAÇABILITÉ, RENDUE LISIBLE.
+   Le journal des opérations montre les mouvements d'argent ; celui-ci montre
+   les DÉCISIONS — une dispense accordée, un prêt refusé, un écart justifié.
+   Ce sont celles qu'on conteste en assemblée, et qui n'apparaissaient nulle
+   part. Ouvert à tout membre : le réserver au bureau reproduirait l'opacité
+   que la plateforme existe pour abolir. */
+
+let filtreHistorique = null;
+
+async function ecranHistorique(contenu) {
+  const [lignes, synthese] = await Promise.all([
+    appel('/historique?limite=150' +
+          (filtreHistorique ? '&categorie=' + encodeURIComponent(filtreHistorique) : '')),
+    appel('/historique/synthese'),
+  ]);
+
+  const total = synthese.reduce((s, c) => s + Number(c.operations), 0);
+
+  let html = `
+    <div class="carte">
+      <h2>Historique des décisions</h2>
+      <p class="discret">
+        Qui a fait quoi, et quand. ${total} opération${total > 1 ? 's' : ''}
+        consignée${total > 1 ? 's' : ''} — rien n'est jamais effacé.
+      </p>
+      <div class="filtres">
+        <button class="puce${!filtreHistorique ? ' active' : ''}"
+                data-filtre="">Tout</button>
+        ${synthese.map((c) => `
+          <button class="puce${filtreHistorique === c.categorie ? ' active' : ''}"
+                  data-filtre="${txt(c.categorie)}">
+            ${txt(c.categorie)} · ${txt(c.operations)}
+          </button>`).join('')}
+      </div>
+    </div>`;
+
+  if (lignes.length === 0) {
+    html += `<div class="carte"><div class="vide">
+               <p><strong>Aucune opération.</strong></p>
+               <p class="discret">
+                 Les décisions du groupe apparaîtront ici au fur et à mesure.
+               </p>
+             </div></div>`;
+  } else {
+    // Regroupement par jour : une liste de 150 lignes sans repère temporel est
+    // illisible, et c'est par date qu'on cherche en assemblée.
+    const jours = [];
+    for (const l of lignes) {
+      const jour = date(l.horodatage);
+      let groupe = jours.find((j) => j.jour === jour);
+      if (!groupe) { groupe = { jour, lignes: [] }; jours.push(groupe); }
+      groupe.lignes.push(l);
+    }
+
+    html += jours.map((j) => `
+      <div class="carte">
+        <h2>${txt(j.jour)}</h2>
+        ${j.lignes.map((l) => `
+          <div class="ligne">
+            <div>
+              <span class="intitule">${txt(l.libelle)}</span>
+              <span class="detail">
+                ${heure(l.horodatage)} · par ${txt(l.auteur)}${
+                  l.motif ? ' · « ' + txt(l.motif) + ' »' : ''}
+              </span>
+            </div>
+            <span class="etat ${couleurCategorie(l.categorie)}">
+              ${txt(l.categorie)}
+            </span>
+          </div>`).join('')}
+      </div>`).join('');
+  }
+
+  contenu.innerHTML = html;
+
+  contenu.querySelectorAll('[data-filtre]').forEach((bouton) => {
+    bouton.addEventListener('click', () => {
+      filtreHistorique = bouton.dataset.filtre || null;
+      afficher('historique');
+    });
+  });
+}
+
+function heure(valeur) {
+  const d = new Date(valeur);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+/* La couleur porte le registre de la décision : ce qui touche à l'argent, ce
+   qui relève du contrôle, et le reste. Trois teintes, pas une par catégorie —
+   au-delà, la couleur cesse d'informer. */
+function couleurCategorie(categorie) {
+  if (categorie === 'Contrôle') return 'attente';
+  if (categorie === 'Argent' || categorie === 'Prêts') return 'regle';
+  return '';
 }
 
 /* -------------------------------------------------------------- journal --- */

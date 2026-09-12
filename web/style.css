@@ -1119,3 +1119,23 @@ main {
   justify-content: flex-end;
   margin-top: var(--e5);
 }
+
+/* Filtres en pastilles : plus rapides qu'une liste déroulante au pouce. */
+.filtres { display: flex; flex-wrap: wrap; gap: var(--e2); margin-top: var(--e3); }
+.puce {
+  padding: .375rem .75rem;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--encre-douce);
+  background: var(--fond);
+  border: 1.5px solid var(--trait);
+  border-radius: 999px;
+  transition: all var(--transition);
+}
+.puce:hover { border-color: var(--violet); color: var(--violet); }
+.puce.active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet-vif), var(--violet-sombre));
+  border-color: transparent;
+}
+@media print { .filtres { display: none; } }
