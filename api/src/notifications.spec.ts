@@ -1,11 +1,15 @@
 /**
  * Tests d'intégration des notifications — F-NOT.
  *
- * CE QUI EST ÉPROUVÉ ICI EST LA MÉCANIQUE, PAS L'ENVOI. Aucun service SMTP ni
- * aucune passerelle WhatsApp n'est joignable depuis cet environnement :
- * l'expéditeur de développement consigne et déclare envoyé. Ce qui se vérifie —
- * et se vérifie réellement — c'est la file, la plage horaire décente, la
- * déduplication, le report progressif et la trace.
+ * CE QUI EST ÉPROUVÉ ICI EST LA MÉCANIQUE : la file, la plage horaire décente,
+ * la déduplication, le report progressif et la trace. `SMTP_HOTE` n'étant pas
+ * renseigné pendant les tests, l'expéditeur de journal consigne et déclare
+ * envoyé — ce qui permet d'éprouver tout l'enchaînement sans rien prétendre sur
+ * le monde extérieur.
+ *
+ * LE DIALOGUE SMTP LUI-MÊME est éprouvé séparément, dans `smtp.spec.ts`, contre
+ * un vrai serveur sur une vraie prise TCP. Les deux se complètent : ici on
+ * vérifie QUAND et à QUI un message part, là-bas COMMENT il part.
  *
  * Prérequis : ./scripts/db.sh reinitialiser
  */
@@ -13,6 +17,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from './app.module';
+import { NotificationsService } from './notifications/notifications.service';
+import { BaseService } from './base/base.service';
 
 const MOT_DE_PASSE = 'tontine2026';
 const ROSCA_TRESORIERE = '+237690110002';
@@ -37,6 +43,11 @@ describe('Notifications — F-NOT', () => {
 
   beforeAll(async () => {
     process.env.JWT_SECRET ??= 'secret-de-test';
+
+    // LE PLANIFICATEUR EST ÉTEINT PENDANT LES TESTS. Laissé actif, son passage
+    // d'amorce viderait la file au milieu d'une assertion sur cette même file,
+    // et les échecs seraient intermittents — le pire genre.
+    process.env.RAPPELS_AUTOMATIQUES = 'non';
 
     const module = await Test.createTestingModule({
       imports: [AppModule],
@@ -252,6 +263,67 @@ describe('Notifications — F-NOT', () => {
         .expect(200);
 
       expect(body.traitees).toBe(0);
+    });
+  });
+
+  describe('Balayage automatique — tous les groupes', () => {
+    it('traite les trois groupes en un passage, sans session', async () => {
+      // C'est ce que fait le planificateur toutes les trente minutes. Les
+      // routes HTTP tirent leur groupe du jeton (N-SEC-03) ; cette méthode
+      // n'en a pas, et doit donc parcourir les groupes elle-même.
+      const service = app.get(NotificationsService);
+      const bilan = await service.balayerTousLesGroupes(10);
+
+      // La base de démonstration porte un ROSCA, un ASCA et une MUTUELLE.
+      expect(bilan.groupes).toBe(3);
+
+      // AUCUN GROUPE EN ERREUR. Si une fonction SQL manquait pour l'ASCA ou la
+      // mutuelle, elle apparaîtrait ici nommée — et le planificateur aurait
+      // tourné des mois en ne servant qu'un groupe sur trois.
+      expect(bilan.erreurs).toEqual([]);
+    });
+
+    it('est rejouable : un second passage ne duplique rien', async () => {
+      // La déduplication est portée par des index uniques partiels en base, non
+      // par la cadence des appels. Un planificateur qui redémarre en boucle ne
+      // doit pas inonder les membres.
+      const service = app.get(NotificationsService);
+
+      const premier = await service.balayerTousLesGroupes(10);
+      const second = await service.balayerTousLesGroupes(10);
+
+      expect(second.rappels_avant).toBe(0);
+      expect(second.rappels_retard).toBe(0);
+      expect(second.alertes_anomalie).toBe(0);
+      // Le premier passage a pu mettre en file ; le second ne trouve plus rien
+      // à envoyer non plus, tout étant déjà parti.
+      expect(second.envoyees).toBe(0);
+      expect(premier.erreurs).toEqual([]);
+    });
+
+    it('écarte les groupes archivés', async () => {
+      // Un rappel d'échéance dans un groupe dont le cycle est clos et les
+      // comptes soldés n'a aucun sens.
+      const service = app.get(NotificationsService);
+      const base = app.get(BaseService);
+
+      const avant = await service.balayerTousLesGroupes(10);
+
+      const groupe = await base.requeteUne<{ id: string }>(
+        `SELECT id FROM groupe WHERE NOT archive ORDER BY nom LIMIT 1`,
+      );
+      await base.requete(`UPDATE groupe SET archive = true WHERE id = $1`, [
+        groupe!.id,
+      ]);
+
+      try {
+        const apres = await service.balayerTousLesGroupes(10);
+        expect(apres.groupes).toBe(avant.groupes - 1);
+      } finally {
+        await base.requete(`UPDATE groupe SET archive = false WHERE id = $1`, [
+          groupe!.id,
+        ]);
+      }
     });
   });
 

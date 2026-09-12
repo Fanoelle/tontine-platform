@@ -43,6 +43,13 @@ async function demarrer(): Promise<void> {
 
   application.setGlobalPrefix('api');
 
+  // SANS CET APPEL, `onApplicationShutdown` N'EST JAMAIS INVOQUÉ. Nest ne
+  // s'abonne aux signaux du système que si on le lui demande. Le planificateur
+  // de rappels s'en sert pour arrêter son minuteur, et le pool de connexions
+  // pour se fermer proprement — sans quoi un redémarrage laisserait des
+  // connexions ouvertes côté PostgreSQL jusqu'à leur expiration.
+  application.enableShutdownHooks();
+
   application.useGlobalPipes(
     new ValidationPipe({
       // Une propriété non déclarée dans le DTO est RETIRÉE, et sa présence fait

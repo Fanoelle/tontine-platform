@@ -83,9 +83,11 @@ export class NotificationsControleur {
   /**
    * Vide la file des messages dont l'heure est venue.
    *
-   * Exposé en route plutôt que déclenché automatiquement : tant qu'aucune
-   * passerelle réelle n'est branchée, un envoi périodique silencieux donnerait
-   * l'illusion d'un service qui n'existe pas.
+   * LE PLANIFICATEUR FAIT DÉSORMAIS CELA TOUT SEUL (planificateur.service.ts).
+   * Cette route reste, et ce n'est pas une redondance : le trésorier qui vient
+   * de saisir dix versements veut voir partir les accusés sans attendre le
+   * prochain passage. Rejouer un balayage est sans risque — la déduplication
+   * est portée par des index uniques en base, pas par la cadence des appels.
    */
   @Post('expedition')
   @Roles('TRESORIER', 'PRESIDENT')

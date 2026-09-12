@@ -48,6 +48,18 @@ export interface ResultatExpedition {
   expediteur: string;
 }
 
+/** Bilan d'un passage du planificateur sur l'ensemble des groupes actifs. */
+export interface ResultatBalayageGlobal {
+  groupes: number;
+  rappels_avant: number;
+  rappels_retard: number;
+  alertes_anomalie: number;
+  envoyees: number;
+  echouees: number;
+  /** Les groupes dont le balayage a échoué, nommés — pour qu'on puisse agir. */
+  erreurs: { groupe: string; motif: string }[];
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly journal = new Logger(NotificationsService.name);
@@ -158,6 +170,74 @@ export class NotificationsService {
    * tentatives.
    */
   async expedierEnAttente(session: Session): Promise<ResultatExpedition> {
+    return this.viderLaFile(session.groupe_id);
+  }
+
+  /**
+   * Balaye TOUS les groupes — réservé au planificateur, sans session.
+   *
+   * POURQUOI UNE MÉTHODE SÉPARÉE PLUTÔT QU'UN `groupe_id` FACULTATIF. Une route
+   * HTTP tire toujours son groupe du jeton (N-SEC-03) ; un paramètre optionnel
+   * ouvrirait la porte à un appel sans groupe depuis un contrôleur, et
+   * l'isolation reposerait alors sur la vigilance de chaque auteur de route.
+   * Deux méthodes aux noms distincts rendent le franchissement visible.
+   */
+  async balayerTousLesGroupes(joursAvant = 3): Promise<ResultatBalayageGlobal> {
+    const groupes = await this.base.requete<{ id: string; nom: string }>(
+      // Les groupes ARCHIVÉS sont écartés : leur cycle est clos, leurs comptes
+      // soldés, et un rappel d'échéance y serait au mieux absurde.
+      `SELECT id, nom FROM groupe WHERE NOT archive ORDER BY nom`,
+    );
+
+    const resultat: ResultatBalayageGlobal = {
+      groupes: 0,
+      rappels_avant: 0,
+      rappels_retard: 0,
+      alertes_anomalie: 0,
+      envoyees: 0,
+      echouees: 0,
+      erreurs: [],
+    };
+
+    for (const groupe of groupes) {
+      // UN GROUPE EN PANNE N'ARRÊTE PAS LES AUTRES. Une donnée incohérente dans
+      // un groupe — un cycle sans tour, une échéance orpheline — ne doit pas
+      // priver les onze autres de leurs rappels.
+      try {
+        const rappels = await this.base.requeteUne<{
+          rappels_avant: number;
+          rappels_retard: number;
+        }>(`SELECT * FROM preparer_rappels($1, $2)`, [groupe.id, joursAvant]);
+
+        const alertes = await this.base.requeteUne<{ alertes: string }>(
+          `SELECT alerter_anomalies($1) AS alertes`,
+          [groupe.id],
+        );
+
+        const expedition = await this.viderLaFile(groupe.id);
+
+        resultat.groupes += 1;
+        resultat.rappels_avant += Number(rappels?.rappels_avant ?? 0);
+        resultat.rappels_retard += Number(rappels?.rappels_retard ?? 0);
+        resultat.alertes_anomalie += Number(alertes?.alertes ?? 0);
+        resultat.envoyees += expedition.envoyees;
+        resultat.echouees += expedition.echouees;
+      } catch (erreur) {
+        resultat.erreurs.push({
+          groupe: groupe.nom,
+          motif: (erreur as Error).message,
+        });
+        this.journal.error(
+          `Balayage du groupe « ${groupe.nom} » interrompu : `
+            + `${(erreur as Error).message}`,
+        );
+      }
+    }
+
+    return resultat;
+  }
+
+  private async viderLaFile(groupeId: string): Promise<ResultatExpedition> {
     const messages = await this.base.requete<
       MessageAExpedier & Record<string, unknown>
     >(
@@ -165,7 +245,7 @@ export class NotificationsService {
          FROM v_notification_a_envoyer
         WHERE groupe_id = $1
         LIMIT 100`,
-      [session.groupe_id],
+      [groupeId],
     );
 
     let envoyees = 0;
