@@ -182,12 +182,11 @@ export class RapportsControleur {
   /**
    * F-PRE-07 — rééchelonnement.
    *
-   * LE CHEMIN EST `reechelonnements/:id` ET NON `prets/:id/reechelonnement`.
-   * NestJS résout les routes par ordre d'enregistrement des contrôleurs : un
-   * chemin commençant par `prets/` depuis un contrôleur sans préfixe entre en
-   * concurrence avec PretsControleur, déclaré sur `@Controller('prets')`. La
-   * requête y était captée et refusée par la garde du voisin — un 403 pour le
-   * président, alors que la route lui est ouverte.
+   * LE CHEMIN EST `reechelonnements/:id` ET NON `prets/:id/reechelonnement` :
+   * un chemin commençant par `prets/` depuis un contrôleur sans préfixe entre
+   * en concurrence avec PretsControleur, déclaré sur `@Controller('prets')`.
+   * Mieux vaut un chemin sans ambiguïté possible qu'un ordre d'enregistrement
+   * dont dépendrait la résolution.
    *
    * La fonction SQL exige en outre le rôle président.
    */

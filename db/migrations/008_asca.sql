@@ -316,4 +316,23 @@ CREATE TRIGGER trg_remboursement_recalcul
 GRANT SELECT, INSERT, UPDATE ON epargne_membre, pret, echeance_pret TO tontine_app;
 GRANT SELECT, INSERT ON remboursement TO tontine_app;
 
+-- LE DELETE EST ACCORDÉ SUR `echeance_pret`, ET SUR ELLE SEULE.
+--
+-- Le rééchelonnement (F-PRE-07) remplace les échéances NON honorées par un
+-- nouvel échéancier : il doit donc pouvoir les supprimer. Sans ce privilège, la
+-- fonction échoue sur « permission denied for table echeance_pret » — et le
+-- refus remonte en 403, ce qui fait croire à un défaut d'habilitation alors que
+-- c'est un défaut de droits sur la base.
+--
+-- POURQUOI PAS `SECURITY DEFINER` SUR LA FONCTION. Ce serait plus court, mais
+-- cela ferait exécuter TOUTE la fonction avec les droits du propriétaire — y
+-- compris ses écritures au journal, qui perdraient alors la protection de la
+-- révocation R-02. Accorder un privilège précis sur une table précise laisse
+-- les autres verrous intacts.
+--
+-- Une échéance de prêt n'est pas une pièce du journal : elle décrit ce qui
+-- reste à payer, pas ce qui a été payé. Les remboursements, eux, restent
+-- INSERT seul — ils portent des écritures et ne se suppriment jamais.
+GRANT DELETE ON echeance_pret TO tontine_app;
+
 COMMIT;
