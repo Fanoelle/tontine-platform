@@ -218,7 +218,11 @@ BEGIN
     -- l'état qui donne du contenu aux écrans d'impayés et de reliquat.
     v_date := (v_debut + INTERVAL '2 months')::DATE;
 
-    FOR j IN 1..10 LOOP
+    -- Borne à 9 et non à 10 : Béatrice occupe l'indice 10 et ne doit RIEN verser,
+    -- conformément au commentaire ci-dessus. Une borne à 10 la faisait cotiser
+    -- tout en la décrivant comme défaillante — le jeu de données contredisait
+    -- alors sa propre intention, et les écrans d'impayés perdaient un cas.
+    FOR j IN 1..9 LOOP
         SELECT id INTO v_echeance FROM echeance
          WHERE tour_id = v_tours[3] AND membre_id = v_membres[j];
 
