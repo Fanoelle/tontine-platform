@@ -6,6 +6,16 @@ let session = {
   groupe: null,
 };
 let ongletCourant = null;
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+    });
+  });
+}
+window.addEventListener('online', () => {
+  signalerHorsLigne(null);
+  if (ongletCourant) afficher(ongletCourant);
+});
 function txt(valeur) {
   if (valeur === null || valeur === undefined) return '';
   return String(valeur)
@@ -49,36 +59,143 @@ function message(texte, genre = '') {
   clearTimeout(message.minuteur);
   message.minuteur = setTimeout(() => { boite.hidden = true; }, 4500);
 }
+/* ---------------------------------------------------- consultation hors-ligne ---
+   CE QUE ÇA RÉSOUT. Une tontine se tient là où le réseau est faible : une cour,
+   un arrière-boutique, une salle de réunion en sous-sol. Le trésorier qui ouvre
+   la plateforme devant le groupe pour répondre à « combien ai-je versé ? » ne
+   peut pas répondre « attends que ça charge ».
+   CE QUI EST ET N'EST PAS PERMIS HORS LIGNE. On lit, on n'écrit pas. Un
+   versement saisi hors ligne devrait être rejoué plus tard contre une base qui
+   aura changé : l'échéance visée peut avoir été réglée entre-temps, dispensée,
+   ou le tour remis. Rejouer aveuglément produirait des doublons dans un journal
+   immuable — impossible à corriger autrement qu'en annulant, ce qui laisse deux
+   écritures là où il n'aurait dû y en avoir aucune.
+   La saisie hors ligne est donc REFUSÉE, explicitement, avec un message qui dit
+   pourquoi. Un trésorier qui note le versement sur son cahier et le saisit en
+   rentrant perd cinq minutes ; un trésorier dont la plateforme a doublé trois
+   cotisations perd la confiance du groupe.
+   LES DONNÉES SONT CLOISONNÉES PAR UTILISATEUR ET EFFACÉES À LA DÉCONNEXION.
+   Ce cache contient des montants, des noms, des impayés — exactement ce qu'un
+   membre ne doit pas pouvoir lire du groupe d'un autre. La clé porte
+   l'identifiant du membre, et `deconnecter()` vide tout. */
+const CACHE_PREFIXE = 'tontine.cache.';
+const CACHE_AGE_MAXIMAL = 7 * 24 * 3600 * 1000;
+function cacheCle(chemin) {
+  const qui = (session.membre && session.membre.id) || 'anonyme';
+  return CACHE_PREFIXE + qui + '.' + chemin;
+}
+/** Archive une réponse. Les échecs de stockage sont ignorés : un quota plein
+    ou un navigateur en navigation privée ne doit pas casser une page qui
+    vient de s'afficher correctement. */
+function archiver(chemin, corps) {
+  try {
+    localStorage.setItem(cacheCle(chemin), JSON.stringify({
+      quand: Date.now(),
+      corps,
+    }));
+  } catch (e) {
+    // Quota dépassé : on fait de la place en retirant les entrées de cet
+    // utilisateur, plutôt que de laisser le cache se figer sur des données
+    // anciennes qu'on ne pourrait plus rafraîchir.
+    try { purgerCache(); } catch (_) { /* rien de mieux à tenter */ }
+  }
+}
+function relire(chemin) {
+  try {
+    const brut = localStorage.getItem(cacheCle(chemin));
+    if (!brut) return null;
+    const entree = JSON.parse(brut);
+    // UNE DONNÉE TROP ANCIENNE EST PIRE QUE PAS DE DONNÉE. Un solde de la
+    // semaine dernière présenté comme courant induirait en erreur là où un
+    // écran vide ferait au moins comprendre qu'il faut du réseau.
+    if (Date.now() - entree.quand > CACHE_AGE_MAXIMAL) {
+      localStorage.removeItem(cacheCle(chemin));
+      return null;
+    }
+    return entree;
+  } catch (e) {
+    return null;
+  }
+}
+function purgerCache() {
+  const aRetirer = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const cle = localStorage.key(i);
+    if (cle && cle.startsWith(CACHE_PREFIXE)) aRetirer.push(cle);
+  }
+  aRetirer.forEach((cle) => localStorage.removeItem(cle));
+}
+/** Affiche — ou retire — le bandeau « hors ligne ». */
+function signalerHorsLigne(entree) {
+  const bandeau = document.getElementById('bandeau-hors-ligne');
+  if (!bandeau) return;
+  if (!entree) {
+    bandeau.hidden = true;
+    return;
+  }
+  const minutes = Math.round((Date.now() - entree.quand) / 60000);
+  const age = minutes < 60
+    ? 'il y a ' + minutes + ' min'
+    : (minutes < 1440
+        ? 'il y a ' + Math.round(minutes / 60) + ' h'
+        : 'le ' + dateCourte(new Date(entree.quand).toISOString()));
+  bandeau.textContent = 'Hors ligne — données consultées ' + age
+    + '. La saisie est indisponible tant que le réseau ne revient pas.';
+  bandeau.hidden = false;
+}
 /** Appel à l'API. Le jeton est joint systématiquement ; un 401 ramène à la
-    connexion plutôt que d'afficher une erreur incompréhensible. */
+    connexion plutôt que d'afficher une erreur incompréhensible.
+    LES LECTURES SONT ARCHIVÉES ET SERVIES HORS LIGNE ; les écritures sont
+    refusées. Voir le commentaire ci-dessus pour le pourquoi. */
 async function appel(chemin, options = {}) {
-  const reponse = await fetch(API + chemin, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session.jeton ? { Authorization: 'Bearer ' + session.jeton } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  const methode = (options.method || 'GET').toUpperCase();
+  const lecture = methode === 'GET';
+  let reponse;
+  try {
+    reponse = await fetch(API + chemin, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session.jeton ? { Authorization: 'Bearer ' + session.jeton } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (e) {
+    // `fetch` ne rejette que sur une panne réseau — un 500 est une réponse.
+    // C'est donc bien ici, et seulement ici, qu'on est hors ligne.
+    if (!lecture) {
+      throw new Error(
+        'Pas de réseau — la saisie est impossible hors ligne. Notez '
+        + "l'opération et enregistrez-la dès que la connexion revient : "
+        + 'un versement rejoué à l\'aveugle risquerait de compter double.',
+      );
+    }
+    const entree = relire(chemin);
+    if (!entree) {
+      throw new Error(
+        'Pas de réseau, et cet écran n\'a pas encore été consulté en ligne. '
+        + 'Ouvrez-le une fois connecté pour pouvoir le relire hors ligne.',
+      );
+    }
+    signalerHorsLigne(entree);
+    return entree.corps;
+  }
   if (reponse.status === 401 && session.jeton) {
     deconnecter();
     throw new Error('Votre session a expiré, reconnectez-vous.');
   }
   const corps = await reponse.json().catch(() => null);
   if (!reponse.ok) {
-    // Les messages du serveur sont déjà rédigés pour un humain — « Le versement
-    // de 25000 F dépasse le reste dû de 15000 F ». Les relayer vaut mieux que
-    // de les remplacer par un texte générique : le trésorier doit comprendre
-    // ce qui est refusé.
     const m = corps && corps.message;
     throw new Error(Array.isArray(m) ? m.join('. ') : (m || 'Opération refusée'));
   }
+  signalerHorsLigne(null);
+  if (lecture && corps !== null) archiver(chemin, corps);
   return corps;
 }
 function aRole(role) {
   return session.membre && session.membre.roles.includes(role);
 }
-/* ------------------------------------------------------------- connexion --- */
 document.getElementById('formulaire-connexion').addEventListener('submit', async (e) => {
   e.preventDefault();
   const bouton = e.target.querySelector('button');
@@ -102,9 +219,6 @@ document.getElementById('formulaire-connexion').addEventListener('submit', async
     try {
       sessionStorage.setItem('tontine', JSON.stringify(session));
     } catch {
-      // Navigation privée ou stockage refusé : la session reste en mémoire.
-      // L'application fonctionne, elle ne survivra simplement pas à un
-      // rechargement. Ce n'est pas une raison d'échouer.
     }
     demarrer();
   } catch (err) {
@@ -117,16 +231,13 @@ document.getElementById('formulaire-connexion').addEventListener('submit', async
 });
 document.getElementById('deconnexion').addEventListener('click', deconnecter);
 function deconnecter() {
+  try { purgerCache(); } catch {  }
   session = { jeton: null, membre: null, groupe: null };
-  try { sessionStorage.removeItem('tontine'); } catch { /* sans importance */ }
+  try { sessionStorage.removeItem('tontine'); } catch {  }
   document.getElementById('application').hidden = true;
   document.getElementById('ecran-connexion').classList.add('actif');
   document.getElementById('mot-de-passe').value = '';
 }
-/* ----------------------------------------------------------- navigation --- */
-/* Les onglets dépendent des rôles. Un onglet sans habilitation est ABSENT, pas
-   grisé : un bouton inactif invite à chercher comment le débloquer, alors que
-   son absence dit simplement que ce n'est pas votre rôle. */
 function ongletsVisibles() {
   const onglets = [];
   const bureau = aRole('TRESORIER') || aRole('PRESIDENT') || aRole('COMMISSAIRE');
@@ -136,10 +247,6 @@ function ongletsVisibles() {
   }
   onglets.push({ cle: 'accueil', nom: 'Situation' });
   onglets.push({ cle: 'membres', nom: 'Membres' });
-  // LES ONGLETS SUIVENT LE MÉCANISME DU GROUPE. Un tour de rôle n'existe qu'en
-  // ROSCA, un prêt qu'en ASCA, une aide qu'en MUTUELLE — la base le refuserait
-  // autrement (décision 0002). Afficher un onglet « Prêts » à une tontine
-  // rotative promettrait une fonction qui n'existe pas pour elle.
   if (session.groupe.type === 'ROSCA') {
     onglets.push({ cle: 'tours', nom: 'Tours' });
   }
@@ -149,21 +256,14 @@ function ongletsVisibles() {
   if (session.groupe.type === 'MUTUELLE') {
     onglets.push({ cle: 'aides', nom: 'Aides' });
   }
-  // Le rapport d'assemblée est ouvert à TOUS les membres : c'est un document
-  // fait pour être lu devant le groupe. Le réserver au bureau reproduirait
-  // l'opacité que la plateforme existe pour abolir.
   onglets.push({ cle: 'rapport', nom: 'Rapport' });
   if (bureau) {
     onglets.push({ cle: 'anomalies', nom: 'À vérifier' });
     onglets.push({ cle: 'journal',   nom: 'Opérations' });
   }
-  // L'historique est ouvert à TOUS : un membre qui conteste une dispense
-  // doit pouvoir lire qui l'a accordée, et pourquoi.
   onglets.push({ cle: 'historique', nom: 'Historique' });
   if (bureau) {
   }
-  // Le rapprochement Mobile Money n'a de sens que pour le trésorier, qui seul
-  // saisit les versements dont il faut vérifier la trace.
   if (aRole('TRESORIER')) {
     onglets.push({ cle: 'rapprochement', nom: 'Mobile Money' });
   }
@@ -193,16 +293,13 @@ const ECRANS = {
   rapprochement: ecranRapprochement,
   historique:    ecranHistorique,
 };
-/* Écrans qui produisent un DOCUMENT — ceux qu'on lit en assemblée ou qu'on
-   classe. Imprimer l'écran de saisie n'aurait aucun sens, et un bouton qui
-   n'en a pas sur la moitié des écrans cesse d'être lu. */
 const ECRANS_IMPRIMABLES = [
   'rapport', 'impayes', 'membres', 'journal',
   'tours', 'prets', 'aides', 'accueil', 'historique',
 ];
 async function afficher(cle) {
   ongletCourant = cle;
-  try { sessionStorage.setItem('ecran', cle); } catch { /* sans importance */ }
+  try { sessionStorage.setItem('ecran', cle); } catch {  }
   dessinerOnglets();
   const contenu = document.getElementById('contenu');
   contenu.innerHTML = '<p class="vide">Chargement…</p>';
@@ -222,10 +319,6 @@ async function afficher(cle) {
     contenu.innerHTML = `<div class="carte"><p class="erreur">${txt(err.message)}</p></div>`;
   }
 }
-/** Initiales d'un nom de groupe, pour la pastille d'en-tête.
-    Deux lettres au plus : au-delà, elles deviennent illisibles dans 38 px.
-    On ignore les mots-outils, qui n'identifient rien — « Tontine des Femmes de
-    Bonabéri » donne « TF », pas « TD ». */
 function initiales(nom) {
   const outils = ['de', 'des', 'du', 'la', 'le', 'les', 'd', 'l', 'et', 'aux'];
   const mots = String(nom || '')
@@ -255,6 +348,44 @@ function demarrer() {
     }
   } catch { /* stockage indisponible : on garde le défaut */ }
   afficher(arrivee);
+  precharger();
+}
+/* PRÉCHARGEMENT DES ÉCRANS DE CONSULTATION.
+   SANS LUI, LE HORS-LIGNE NE COUVRIRAIT QUE L'ÉCRAN DÉJÀ OUVERT. Un premier
+   essai en navigateur ne trouvait qu'une seule entrée archivée : le trésorier
+   qui n'avait consulté que l'accueil se retrouvait, en réunion, avec un seul
+   écran lisible — et les questions du groupe portent justement sur les impayés
+   et les relevés.
+   FAIT EN ARRIÈRE-PLAN ET SANS BLOQUER. Chaque écran est demandé une fois,
+   `appel()` l'archive au passage, et les échecs sont ignorés : un membre sans
+   habilitation reçoit un 403 sur `/impayes`, ce qui est normal et ne doit rien
+   interrompre.
+   LIMITÉ AUX ÉCRANS QUE L'UTILISATEUR PEUT VOIR. Précharger une route interdite
+   remplirait les journaux d'accès de refus qui ressembleraient à des tentatives
+   d'intrusion — et brouilleraient le travail du commissaire aux comptes. */
+function precharger() {
+  if (navigator.onLine === false) return;
+  /* LES CHEMINS SONT CEUX QUE LES ÉCRANS DEMANDENT, AU CARACTÈRE PRÈS.
+     La clé du cache est le chemin lui-même : précharger `/impayes` quand
+     l'écran appelle `/cotisations/impayes` remplirait le cache d'une entrée
+     que rien ne relirait jamais, tout en donnant l'illusion que l'écran est
+     disponible hors ligne. Vérifié route par route contre les appels réels du
+     fichier — deux des cinq premières esquisses étaient fausses. */
+  const routes = ['/tableau-de-bord', '/membres'];
+  if (aRole('TRESORIER') || aRole('PRESIDENT') || aRole('COMMISSAIRE')) {
+    routes.push('/cotisations/impayes', '/rapport-assemblee');
+  }
+  if (session.groupe.type === 'ROSCA') routes.push('/tours');
+  if (session.groupe.type === 'ASCA') routes.push('/prets');
+  if (session.groupe.type === 'MUTUELLE') routes.push('/aides');
+  // Séquentiel, et non en parallèle : sur une connexion faible — celle des
+  // utilisateurs visés — lancer six requêtes d'un coup ralentirait l'écran que
+  // la personne est en train de regarder.
+  routes.reduce(
+    (chaine, route) =>
+      chaine.then(() => appel(route).catch(() => undefined)),
+    Promise.resolve(),
+  );
 }
 /* ================================================================ ÉCRANS === */
 /* -------------------------------------------------------------- accueil --- */
@@ -591,8 +722,6 @@ async function ecranPrets(contenu) {
     ['EN_REMBOURSEMENT', 'EN_RETARD', 'REECHELONNE'].includes(p.statut));
   const clos = prets.filter((p) => ['SOLDE', 'REFUSE'].includes(p.statut));
   let html = '';
-  // L'avoir disponible commande ce que la caisse peut prêter (R-06). L'afficher
-  // avant les demandes évite d'approuver un prêt que la caisse ne peut honorer.
   if (aRole('PRESIDENT') || aRole('TRESORIER') || aRole('COMMISSAIRE')) {
     try {
       const avoir = await appel('/prets/avoir-disponible');
@@ -608,7 +737,6 @@ async function ecranPrets(contenu) {
           </div>
         </div>`;
     } catch {
-      // Habilitation insuffisante : l'écran reste utile sans ce bloc.
     }
   }
   if (enAttente.length > 0) {
@@ -694,9 +822,6 @@ async function ecranPrets(contenu) {
     });
   });
 }
-/* ---------------------------------------------------------------- aides --- */
-/* Spécialisation MUTUELLE. Une aide n'ouvre AUCUNE créance : le vocabulaire de
-   l'écran ne doit jamais laisser croire qu'elle sera remboursée. */
 async function ecranAides(contenu) {
   const aides = await appel('/aides');
   const aDecider = aides.filter((a) => a.statut === 'DEMANDEE');
@@ -757,8 +882,6 @@ async function ecranAides(contenu) {
   contenu.innerHTML = html;
   contenu.querySelectorAll('[data-approuver-aide]').forEach((bouton) => {
     bouton.addEventListener('click', async () => {
-      // Le montant accordé peut être INFÉRIEUR au montant demandé : le groupe
-      // arbitre selon l'état du fonds. C'est une décision, pas un droit.
       const montant = prompt(
         `Montant accordé à ${bouton.dataset.nom} ?`,
         bouton.dataset.montant,
@@ -794,11 +917,6 @@ async function ecranAides(contenu) {
     });
   });
 }
-/* ------------------------------------------------------------ anomalies --- */
-/* L'ÉCRAN S'APPELLE « À VÉRIFIER », PAS « ANOMALIES » — encore moins
-   « ALERTES ». Une tontine repose sur la confiance ; un outil qui désignerait
-   un coupable détruirait ce qu'il prétend protéger. Chaque libellé décrit un
-   constat, jamais une intention. */
 async function ecranAnomalies(contenu) {
   const ouvertes = await appel('/anomalies');
   const critiques = ouvertes.filter((a) => a.gravite === 'CRITIQUE');
@@ -835,8 +953,6 @@ async function ecranAnomalies(contenu) {
                <p class="discret">Les comptes du groupe sont cohérents.</p>
              </div></div>`;
   }
-  // Les anomalies levées restent consultables : la levée fait partie de la
-  // piste d'audit, elle n'efface rien.
   const levees = await appel('/anomalies/levees');
   if (levees.length > 0) {
     html += `<div class="carte">
@@ -877,8 +993,6 @@ async function ecranAnomalies(contenu) {
   });
   contenu.querySelectorAll('[data-lever]').forEach((bouton) => {
     bouton.addEventListener('click', async () => {
-      // Le motif est obligatoire et restera au dossier (F-ANO-08). L'invite le
-      // dit, pour qu'on ne découvre pas après coup que « vu » était insuffisant.
       const motif = prompt(
         'Pourquoi cet écart s\'explique-t-il ?\n\n' +
         'Votre explication restera au dossier et doit rester compréhensible ' +
@@ -900,21 +1014,9 @@ async function ecranAnomalies(contenu) {
     });
   });
 }
-/* -------------------------------------------------------------- rapport --- */
-/* F-RAP-05 — LE RAPPORT D'ASSEMBLÉE.
-   Un document qu'une personne lit à voix haute devant le groupe, et que chacun
-   doit pouvoir contester chiffre en main. Il dit aussi ce qui ne va pas : taire
-   les anomalies ouvertes reviendrait à rassurer plutôt qu'à rendre compte. */
-/** Valeur d'une ligne de rapport, formatée pour la lecture à voix haute.
-    On privilégie le champ numérique `montant` : analyser la chaîne `valeur`
-    casserait dès qu'un libellé ou une devise change. */
 function valeurRapport(ligne) {
   const brut = String(ligne.valeur ?? '');
-  // Une valeur non monétaire — un compte, un taux, un état — s'affiche telle
-  // quelle : « 12 membres » n'a pas à devenir « 12 F ».
   if (ligne.montant === null || ligne.montant === undefined) return txt(brut);
-  // Le montant n'accompagne une somme que si la valeur porte la devise ; les
-  // décomptes portent le même champ sans être de l'argent.
   const devise = brut.match(/[A-Z]{3}$/);
   if (!devise) return txt(brut);
   return txt(Number(ligne.montant).toLocaleString('fr-FR')
@@ -922,8 +1024,6 @@ function valeurRapport(ligne) {
 }
 async function ecranRapport(contenu) {
   const lignes = await appel('/rapport-assemblee');
-  // Regroupement par rubrique, dans l'ordre où le serveur les renvoie : cet
-  // ordre est celui de la lecture en assemblée, il ne doit pas être trié.
   const rubriques = [];
   for (const l of lignes) {
     let groupe = rubriques.find((r) => r.nom === l.rubrique);
@@ -956,8 +1056,6 @@ async function ecranRapport(contenu) {
     telecharger('/exports/rapport.csv', 'rapport-assemblee.csv');
   });
 }
-/* Téléchargement d'un export. Le jeton voyageant dans un en-tête, un simple
-   lien ne suffit pas : on récupère le contenu puis on le remet au navigateur. */
 async function telecharger(chemin, nom) {
   try {
     const reponse = await fetch(API + chemin, {
@@ -976,11 +1074,6 @@ async function telecharger(chemin, nom) {
     message(err.message, 'echec');
   }
 }
-/* -------------------------------------------------- rapprochement MM --- */
-/* F-TRX-06 — LE RAPPROCHEMENT NE CORRIGE RIEN.
-   Il compare le relevé de l'opérateur au registre et signale les écarts dans
-   les deux sens. Importer automatiquement les lignes reviendrait à laisser un
-   opérateur écrire dans les comptes du groupe. */
 async function ecranRapprochement(contenu) {
   const releves = await appel('/releves');
   if (releves.length === 0) {
@@ -1053,10 +1146,6 @@ async function ecranRapprochement(contenu) {
   }
   contenu.innerHTML = html;
 }
-/* ------------------------------------------------------- impression --- */
-/* TITRES DES DOCUMENTS, par écran. Un document imprimé doit se nommer : une
-   feuille intitulée « Tontine » ne dit pas si elle porte les impayés ou le
-   rapport d'assemblée. */
 const TITRES_IMPRESSION = {
   accueil:       'Situation du groupe',
   impayes:       'État des cotisations en attente',
@@ -1071,10 +1160,6 @@ const TITRES_IMPRESSION = {
   historique:    'Historique des décisions du groupe',
   saisie:        'Saisie de versement',
 };
-/* Empreinte courte du document : quatre caractères dérivés de l'horodatage et
-   de l'écran. Deux impressions du même écran à deux moments différents portent
-   des empreintes différentes — c'est ce qui permet, en cas de désaccord, de
-   savoir laquelle des deux feuilles est la plus récente. */
 function empreinte(graine) {
   let h = 0;
   for (const c of graine) {
@@ -1226,9 +1311,15 @@ try {
     const reprise = JSON.parse(enregistree);
     if (reprise && reprise.jeton) {
       session = reprise;
-      appel('/authentification/session')
-        .then(() => demarrer())
-        .catch(() => deconnecter());
+      if (navigator.onLine === false) {
+        demarrer();
+      } else {
+        appel('/authentification/session')
+          .then(() => demarrer())
+          .catch((err) => {
+            if (session.jeton) demarrer();
+          });
+      }
     }
   }
 } catch {

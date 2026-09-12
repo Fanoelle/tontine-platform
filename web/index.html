@@ -81,6 +81,14 @@
        invite à chercher comment le débloquer. -->
   <nav class="onglets" id="onglets" aria-label="Navigation principale"></nav>
 
+  <!-- BANDEAU HORS LIGNE.
+       Affiché dès qu'un écran est servi depuis l'archive locale, avec l'âge
+       des données. Sans cette mention, un trésorier lirait un solde vieux
+       d'une heure en le croyant à jour — et l'annoncerait au groupe.
+       `role="status"` le fait annoncer par les lecteurs d'écran sans voler le
+       focus à la lecture en cours. -->
+  <div class="bandeau-hors-ligne" id="bandeau-hors-ligne" role="status" hidden></div>
+
   <!-- EN-TÊTE ET PIED DE PAGE DU DOCUMENT IMPRIMÉ.
        Invisibles à l'écran, ils n'apparaissent qu'à l'impression : un document
        de tontine circule de main en main en assemblée, et doit dire de

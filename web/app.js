@@ -28,6 +28,31 @@ let session = {
 
 let ongletCourant = null;
 
+/* ENREGISTREMENT DU SERVICE WORKER — c'est lui qui rend l'application
+   ouvrable sans réseau. L'échec est silencieux et sans conséquence : en
+   navigation privée, sur une origine non sécurisée ou dans un navigateur
+   ancien, l'application fonctionne exactement comme avant, simplement sans
+   consultation hors ligne.
+
+   `load` plutôt qu'immédiatement : l'installation télécharge la coquille, et
+   la faire concourir avec le premier affichage ralentirait précisément ce
+   qu'on cherche à rendre rapide. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* hors ligne indisponible : l'application reste pleinement utilisable */
+    });
+  });
+}
+
+/* Le retour du réseau efface le bandeau et recharge l'écran courant : rester
+   sur des données archivées alors que la connexion est revenue serait le
+   défaut le plus agaçant de cette fonctionnalité. */
+window.addEventListener('online', () => {
+  signalerHorsLigne(null);
+  if (ongletCourant) afficher(ongletCourant);
+});
+
 /* ---------------------------------------------------------------- outils --- */
 
 /** Échappement systématique : toute donnée vient du serveur, donc d'une
@@ -83,17 +108,148 @@ function message(texte, genre = '') {
   message.minuteur = setTimeout(() => { boite.hidden = true; }, 4500);
 }
 
+/* ---------------------------------------------------- consultation hors-ligne ---
+
+   CE QUE ÇA RÉSOUT. Une tontine se tient là où le réseau est faible : une cour,
+   un arrière-boutique, une salle de réunion en sous-sol. Le trésorier qui ouvre
+   la plateforme devant le groupe pour répondre à « combien ai-je versé ? » ne
+   peut pas répondre « attends que ça charge ».
+
+   CE QUI EST ET N'EST PAS PERMIS HORS LIGNE. On lit, on n'écrit pas. Un
+   versement saisi hors ligne devrait être rejoué plus tard contre une base qui
+   aura changé : l'échéance visée peut avoir été réglée entre-temps, dispensée,
+   ou le tour remis. Rejouer aveuglément produirait des doublons dans un journal
+   immuable — impossible à corriger autrement qu'en annulant, ce qui laisse deux
+   écritures là où il n'aurait dû y en avoir aucune.
+
+   La saisie hors ligne est donc REFUSÉE, explicitement, avec un message qui dit
+   pourquoi. Un trésorier qui note le versement sur son cahier et le saisit en
+   rentrant perd cinq minutes ; un trésorier dont la plateforme a doublé trois
+   cotisations perd la confiance du groupe.
+
+   LES DONNÉES SONT CLOISONNÉES PAR UTILISATEUR ET EFFACÉES À LA DÉCONNEXION.
+   Ce cache contient des montants, des noms, des impayés — exactement ce qu'un
+   membre ne doit pas pouvoir lire du groupe d'un autre. La clé porte
+   l'identifiant du membre, et `deconnecter()` vide tout. */
+
+const CACHE_PREFIXE = 'tontine.cache.';
+const CACHE_AGE_MAXIMAL = 7 * 24 * 3600 * 1000;
+
+function cacheCle(chemin) {
+  const qui = (session.membre && session.membre.id) || 'anonyme';
+  return CACHE_PREFIXE + qui + '.' + chemin;
+}
+
+/** Archive une réponse. Les échecs de stockage sont ignorés : un quota plein
+    ou un navigateur en navigation privée ne doit pas casser une page qui
+    vient de s'afficher correctement. */
+function archiver(chemin, corps) {
+  try {
+    localStorage.setItem(cacheCle(chemin), JSON.stringify({
+      quand: Date.now(),
+      corps,
+    }));
+  } catch (e) {
+    // Quota dépassé : on fait de la place en retirant les entrées de cet
+    // utilisateur, plutôt que de laisser le cache se figer sur des données
+    // anciennes qu'on ne pourrait plus rafraîchir.
+    try { purgerCache(); } catch (_) { /* rien de mieux à tenter */ }
+  }
+}
+
+function relire(chemin) {
+  try {
+    const brut = localStorage.getItem(cacheCle(chemin));
+    if (!brut) return null;
+
+    const entree = JSON.parse(brut);
+
+    // UNE DONNÉE TROP ANCIENNE EST PIRE QUE PAS DE DONNÉE. Un solde de la
+    // semaine dernière présenté comme courant induirait en erreur là où un
+    // écran vide ferait au moins comprendre qu'il faut du réseau.
+    if (Date.now() - entree.quand > CACHE_AGE_MAXIMAL) {
+      localStorage.removeItem(cacheCle(chemin));
+      return null;
+    }
+
+    return entree;
+  } catch (e) {
+    return null;
+  }
+}
+
+function purgerCache() {
+  const aRetirer = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const cle = localStorage.key(i);
+    if (cle && cle.startsWith(CACHE_PREFIXE)) aRetirer.push(cle);
+  }
+  aRetirer.forEach((cle) => localStorage.removeItem(cle));
+}
+
+/** Affiche — ou retire — le bandeau « hors ligne ». */
+function signalerHorsLigne(entree) {
+  const bandeau = document.getElementById('bandeau-hors-ligne');
+  if (!bandeau) return;
+
+  if (!entree) {
+    bandeau.hidden = true;
+    return;
+  }
+
+  const minutes = Math.round((Date.now() - entree.quand) / 60000);
+  const age = minutes < 60
+    ? 'il y a ' + minutes + ' min'
+    : (minutes < 1440
+        ? 'il y a ' + Math.round(minutes / 60) + ' h'
+        : 'le ' + dateCourte(new Date(entree.quand).toISOString()));
+
+  bandeau.textContent = 'Hors ligne — données consultées ' + age
+    + '. La saisie est indisponible tant que le réseau ne revient pas.';
+  bandeau.hidden = false;
+}
+
 /** Appel à l'API. Le jeton est joint systématiquement ; un 401 ramène à la
-    connexion plutôt que d'afficher une erreur incompréhensible. */
+    connexion plutôt que d'afficher une erreur incompréhensible.
+
+    LES LECTURES SONT ARCHIVÉES ET SERVIES HORS LIGNE ; les écritures sont
+    refusées. Voir le commentaire ci-dessus pour le pourquoi. */
 async function appel(chemin, options = {}) {
-  const reponse = await fetch(API + chemin, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session.jeton ? { Authorization: 'Bearer ' + session.jeton } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  const methode = (options.method || 'GET').toUpperCase();
+  const lecture = methode === 'GET';
+
+  let reponse;
+  try {
+    reponse = await fetch(API + chemin, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session.jeton ? { Authorization: 'Bearer ' + session.jeton } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (e) {
+    // `fetch` ne rejette que sur une panne réseau — un 500 est une réponse.
+    // C'est donc bien ici, et seulement ici, qu'on est hors ligne.
+    if (!lecture) {
+      throw new Error(
+        'Pas de réseau — la saisie est impossible hors ligne. Notez '
+        + "l'opération et enregistrez-la dès que la connexion revient : "
+        + 'un versement rejoué à l\'aveugle risquerait de compter double.',
+      );
+    }
+
+    const entree = relire(chemin);
+    if (!entree) {
+      throw new Error(
+        'Pas de réseau, et cet écran n\'a pas encore été consulté en ligne. '
+        + 'Ouvrez-le une fois connecté pour pouvoir le relire hors ligne.',
+      );
+    }
+
+    signalerHorsLigne(entree);
+    return entree.corps;
+  }
 
   if (reponse.status === 401 && session.jeton) {
     deconnecter();
@@ -110,6 +266,10 @@ async function appel(chemin, options = {}) {
     const m = corps && corps.message;
     throw new Error(Array.isArray(m) ? m.join('. ') : (m || 'Opération refusée'));
   }
+
+  // Le réseau répond : on sort de l'état hors ligne et on rafraîchit l'archive.
+  signalerHorsLigne(null);
+  if (lecture && corps !== null) archiver(chemin, corps);
 
   return corps;
 }
@@ -165,6 +325,13 @@ document.getElementById('formulaire-connexion').addEventListener('submit', async
 document.getElementById('deconnexion').addEventListener('click', deconnecter);
 
 function deconnecter() {
+  // LE CACHE EST VIDÉ AVANT D'OUBLIER QUI ON ÉTAIT — les clés portent
+  // l'identifiant du membre, et `purgerCache()` en a besoin. L'ordre inverse
+  // laisserait des montants et des impayés lisibles par la personne suivante
+  // sur le même téléphone, ce qui est précisément ce que la déconnexion
+  // promet d'empêcher.
+  try { purgerCache(); } catch { /* stockage indisponible : rien à purger */ }
+
   session = { jeton: null, membre: null, groupe: null };
   try { sessionStorage.removeItem('tontine'); } catch { /* sans importance */ }
   document.getElementById('application').hidden = true;
@@ -328,6 +495,52 @@ function demarrer() {
   } catch { /* stockage indisponible : on garde le défaut */ }
 
   afficher(arrivee);
+  precharger();
+}
+
+/* PRÉCHARGEMENT DES ÉCRANS DE CONSULTATION.
+
+   SANS LUI, LE HORS-LIGNE NE COUVRIRAIT QUE L'ÉCRAN DÉJÀ OUVERT. Un premier
+   essai en navigateur ne trouvait qu'une seule entrée archivée : le trésorier
+   qui n'avait consulté que l'accueil se retrouvait, en réunion, avec un seul
+   écran lisible — et les questions du groupe portent justement sur les impayés
+   et les relevés.
+
+   FAIT EN ARRIÈRE-PLAN ET SANS BLOQUER. Chaque écran est demandé une fois,
+   `appel()` l'archive au passage, et les échecs sont ignorés : un membre sans
+   habilitation reçoit un 403 sur `/impayes`, ce qui est normal et ne doit rien
+   interrompre.
+
+   LIMITÉ AUX ÉCRANS QUE L'UTILISATEUR PEUT VOIR. Précharger une route interdite
+   remplirait les journaux d'accès de refus qui ressembleraient à des tentatives
+   d'intrusion — et brouilleraient le travail du commissaire aux comptes. */
+function precharger() {
+  if (navigator.onLine === false) return;
+
+  /* LES CHEMINS SONT CEUX QUE LES ÉCRANS DEMANDENT, AU CARACTÈRE PRÈS.
+
+     La clé du cache est le chemin lui-même : précharger `/impayes` quand
+     l'écran appelle `/cotisations/impayes` remplirait le cache d'une entrée
+     que rien ne relirait jamais, tout en donnant l'illusion que l'écran est
+     disponible hors ligne. Vérifié route par route contre les appels réels du
+     fichier — deux des cinq premières esquisses étaient fausses. */
+  const routes = ['/tableau-de-bord', '/membres'];
+
+  if (aRole('TRESORIER') || aRole('PRESIDENT') || aRole('COMMISSAIRE')) {
+    routes.push('/cotisations/impayes', '/rapport-assemblee');
+  }
+  if (session.groupe.type === 'ROSCA') routes.push('/tours');
+  if (session.groupe.type === 'ASCA') routes.push('/prets');
+  if (session.groupe.type === 'MUTUELLE') routes.push('/aides');
+
+  // Séquentiel, et non en parallèle : sur une connexion faible — celle des
+  // utilisateurs visés — lancer six requêtes d'un coup ralentirait l'écran que
+  // la personne est en train de regarder.
+  routes.reduce(
+    (chaine, route) =>
+      chaine.then(() => appel(route).catch(() => undefined)),
+    Promise.resolve(),
+  );
 }
 
 /* ================================================================ ÉCRANS === */
@@ -1468,18 +1681,50 @@ async function ecranJournal(contenu) {
 
 /* ------------------------------------------------------------ démarrage --- */
 
-// Reprise d'une session après rechargement de page.
+/* Reprise d'une session après rechargement de page.
+
+   UN JETON REFUSÉ ET UNE ABSENCE DE RÉSEAU NE SE TRAITENT PAS PAREIL, et les
+   confondre rendait la consultation hors ligne inopérante dans le seul cas qui
+   compte.
+
+   La version précédente faisait `.catch(() => deconnecter())` sur la
+   vérification du jeton. Hors ligne, cet appel échoue — donc l'application
+   déconnectait l'utilisateur et purgeait son cache au moment précis où il
+   rouvrait la plateforme sans réseau, en réunion. Tout le dispositif hors
+   ligne était là, et inaccessible. Seul un essai dans un vrai navigateur l'a
+   montré : le code se lisait comme correct.
+
+   Désormais :
+     — jeton refusé (le serveur répond 401) → déconnexion, c'est une décision
+       du serveur qu'on doit respecter ;
+     — pas de réseau → on garde la session et on affiche ce qu'on a, avec le
+       bandeau qui dit d'où viennent les données.
+
+   Le risque résiduel est un jeton révoqué pendant une coupure : l'utilisateur
+   lirait des données déjà en sa possession jusqu'au retour du réseau, où la
+   vérification reprend. Lire ce qu'on a déjà lu n'est pas une fuite. */
 try {
   const enregistree = sessionStorage.getItem('tontine');
   if (enregistree) {
     const reprise = JSON.parse(enregistree);
     if (reprise && reprise.jeton) {
       session = reprise;
-      // On vérifie le jeton auprès du serveur avant d'afficher quoi que ce
-      // soit : il a pu expirer, ou le rôle avoir été retiré entre-temps.
-      appel('/authentification/session')
-        .then(() => demarrer())
-        .catch(() => deconnecter());
+
+      if (navigator.onLine === false) {
+        // Inutile d'interroger le réseau pour apprendre qu'il est absent.
+        demarrer();
+      } else {
+        appel('/authentification/session')
+          .then(() => demarrer())
+          .catch((err) => {
+            // `appel()` a déjà appelé `deconnecter()` sur un 401 et lève alors
+            // « session a expiré ». Tout autre échec est réseau : on garde la
+            // session. `session.jeton` étant vidé par `deconnecter()`, le
+            // tester suffit à distinguer les deux cas sans inspecter le texte
+            // du message — qui, lui, pourrait changer.
+            if (session.jeton) demarrer();
+          });
+      }
     }
   }
 } catch {

@@ -350,6 +350,19 @@ button { font: inherit; cursor: pointer; border-radius: var(--rayon-s); }
   -webkit-overflow-scrolling: touch;
 }
 .onglets::-webkit-scrollbar { display: none; }
+.bandeau-hors-ligne {
+  position: sticky;
+  top: 111px;
+  z-index: 18;
+  padding: var(--e2) var(--e4);
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ambre);
+  background: var(--ambre-fond);
+  border-bottom: 1.5px solid var(--ambre-trait);
+}
+@media print { .bandeau-hors-ligne { display: none; } }
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
   .onglets { background: var(--papier); }
 }

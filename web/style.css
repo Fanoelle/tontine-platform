@@ -460,6 +460,32 @@ button { font: inherit; cursor: pointer; border-radius: var(--rayon-s); }
 }
 .onglets::-webkit-scrollbar { display: none; }
 
+/* BANDEAU HORS LIGNE.
+   Ambre et non rouge : être hors ligne n'est pas une panne, c'est un mode
+   dégradé où la consultation reste fiable. Le rouge appellerait une action
+   corrective que l'utilisateur n'a pas — on ne fait pas apparaître du réseau.
+
+   Il se place sous les onglets et reste collé au défilement : l'information
+   « ces chiffres datent » doit rester visible pendant qu'on lit les chiffres,
+   pas seulement au moment où l'écran s'ouvre. */
+.bandeau-hors-ligne {
+  position: sticky;
+  top: 111px;
+  z-index: 18;
+  padding: var(--e2) var(--e4);
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ambre);
+  background: var(--ambre-fond);
+  border-bottom: 1.5px solid var(--ambre-trait);
+}
+
+/* À l'impression, le bandeau disparaît : un document de tontine circule en
+   assemblée, et l'état réseau du téléphone qui l'a imprimé n'y a pas sa place.
+   La date d'édition, elle, figure déjà dans le pied de page. */
+@media print { .bandeau-hors-ligne { display: none; } }
+
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
   .onglets { background: var(--papier); }
 }
