@@ -806,10 +806,316 @@ main {
 
 /* Impression : le rapport d'assemblée est fait pour être lu devant le groupe,
    parfois sur papier. */
+/* ----------------------------------------------------------- impression --- */
+
+/* L'en-tête et le pied de page n'existent QU'À L'IMPRESSION : à l'écran, le
+   nom du groupe est déjà dans la barre du haut, le répéter serait du bruit. */
+.entete-impression, .pied-impression { display: none; }
+
 @media print {
-  .entete, .onglets, .message, button { display: none !important; }
-  body { background: #fff; color: #000; }
-  .carte { box-shadow: none; border-color: #ccc; page-break-inside: avoid;
-           animation: none; }
-  main { max-width: none; padding: 0; }
+  /* Format et marges. A4 par défaut — le papier courant ici. */
+  @page {
+    size: A4;
+    margin: 16mm 14mm 18mm;
+  }
+
+  /* Tout ce qui relève de la navigation disparaît : un bouton imprimé est au
+     mieux inutile, au pire trompeur pour qui lit la feuille. */
+  .entete, .onglets, .message, button, .secondaire { display: none !important; }
+
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 10.5pt;
+    line-height: 1.45;
+    /* Jamais moins de trois lignes isolées en bas ou en haut d'une page : une
+       ligne orpheline oblige à retourner la feuille pour comprendre. */
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* TOUT LE TEXTE PASSE EN NOIR, sans exception.
+     Mes premières règles ne touchaient que les FONDS : les libellés violets et
+     les bordures colorées passaient au travers. Sur une imprimante noir et
+     blanc — la règle dans les groupes visés — un violet clair devient un gris
+     délavé à peine lisible. Le document doit rester lisible photocopié. */
+  main, main *, .entete-impression, .entete-impression *,
+  .pied-impression, .pied-impression * {
+    color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Les nuances de gris restent permises là où elles portent une hiérarchie,
+     et seulement là. */
+  .discret, .ligne .detail, .chiffre .etiquette,
+  .pied-impression, .entete-impression .contexte {
+    color: #444 !important;
+  }
+
+  /* Les champs de saisie deviennent de simples valeurs : un champ imprimé avec
+     sa bordure et sa flèche de liste déroulante fait croire qu'on peut écrire
+     dessus. */
+  input, select {
+    border: none !important;
+    border-bottom: .5px solid #999 !important;
+    border-radius: 0 !important;
+    padding: 0 0 1mm !important;
+    background-image: none !important;
+    appearance: none !important;
+    font-weight: 600;
+  }
+
+  label { color: #444 !important; font-size: 8.5pt; }
+
+  main { max-width: none; padding: 0; margin: 0; }
+
+  /* =========================================================================
+     EN-TÊTE DU DOCUMENT IMPRIMÉ
+
+     CE QU'EST UN DOCUMENT DE TONTINE. Une feuille qui circule de main en main
+     en assemblée, lue à voix haute, parfois contestée sur-le-champ. Trois
+     questions se posent alors, dans cet ordre : de quel groupe parle-t-on,
+     de quelle date, et cette feuille est-elle complète ?
+
+     L'en-tête répond aux deux premières, le pied à la troisième.
+     ========================================================================= */
+
+  .entete-impression {
+    display: grid;
+    grid-template-columns: 14mm 1fr auto;
+    gap: 0 4mm;
+    align-items: start;
+    margin-bottom: 7mm;
+    padding-bottom: 3mm;
+    /* Filet double : une ligne fine sous une ligne épaisse. C'est la
+       convention des registres comptables manuscrits, que les trésoriers de
+       tontine connaissent — le document paraît familier avant d'être lu. */
+    border-bottom: 2.5px solid #000;
+    box-shadow: 0 2.5px 0 #000;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Cachet d'initiales, encadré comme un tampon. Sur une pile de feuilles
+     posées sur une natte, il identifie le groupe d'un coup d'œil, sans avoir
+     à lire. */
+  .entete-impression .cachet {
+    display: grid;
+    place-items: center;
+    width: 14mm;
+    height: 14mm;
+    font-size: 13pt;
+    font-weight: 800;
+    letter-spacing: -.5pt;
+    border: 2px solid #000;
+    border-radius: 2mm;
+  }
+
+  .entete-impression .titre {
+    font-size: 14pt;
+    font-weight: 750;
+    letter-spacing: -.2pt;
+    margin: 0 0 .8mm;
+    line-height: 1.15;
+  }
+
+  .entete-impression .groupe {
+    font-size: 10.5pt;
+    font-weight: 600;
+    margin: 0 0 1mm;
+  }
+
+  .entete-impression .contexte {
+    font-size: 8.5pt;
+    color: #333;
+    line-height: 1.5;
+  }
+
+  /* Bloc de droite : la date d'arrêté, mise en évidence. C'est l'information
+     qu'on cherche en premier quand deux versions circulent. */
+  .entete-impression .arrete {
+    text-align: right;
+    font-size: 8.5pt;
+    color: #333;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  .entete-impression .arrete strong {
+    display: block;
+    font-size: 10.5pt;
+    color: #000;
+  }
+
+  /* =========================================================================
+     PIED DE PAGE
+
+     « Cette feuille est-elle complète ? » — la question d'un document qui
+     circule. Trois réponses : la pagination, l'empreinte du document, et la
+     mention de ce qu'il n'est pas.
+     ========================================================================= */
+
+  /* PAS DE NUMÉROTATION DES PAGES, ET C'EST DÉLIBÉRÉ.
+     Vérifié sur la documentation Chrome et le W3C : `counter(page)` avec
+     `position: fixed` ne s'incrémente qu'en Firefox — Chrome répète « Page 1 »
+     sur chaque feuille. Les margin-boxes @page (@bottom-right) sont derrière
+     un drapeau non activé par défaut dans Chromium, et absentes ailleurs.
+     Une pagination FAUSSE sur un document qui circule en assemblée serait pire
+     qu'aucune : elle ferait croire qu'il ne manque rien. On s'en remet donc à
+     l'empreinte, identique sur toutes les feuilles d'un même tirage. */
+  .pied-impression {
+    display: block;
+    margin-top: 8mm;
+    padding-top: 3mm;
+    border-top: 1px solid #000;
+    font-size: 8pt;
+    color: #333;
+    line-height: 1.55;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .pied-impression .rangee {
+    display: flex;
+    justify-content: space-between;
+    gap: 6mm;
+    align-items: baseline;
+  }
+
+  /* L'EMPREINTE : date, heure et identifiant court du document.
+     Deux impressions du même écran à deux moments différents portent des
+     empreintes différentes — c'est ce qui permet, en cas de désaccord, de
+     savoir laquelle des deux feuilles est la plus récente. */
+  .pied-impression .empreinte {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 7.5pt;
+    letter-spacing: .3pt;
+  }
+
+  /* LA MENTION LÉGALE, en une phrase. Elle dit ce que le document N'EST PAS :
+     la plateforme n'encaisse rien, elle enregistre des mouvements réalisés
+     ailleurs. Un document comptable qui laisserait croire le contraire
+     tromperait sur la nature du service (cahier des charges §1.3). */
+  .pied-impression .mention {
+    margin-top: 2mm;
+    padding-top: 2mm;
+    border-top: .5px dotted #999;
+    font-size: 7.5pt;
+    color: #555;
+    font-style: italic;
+  }
+
+  /* ESPACE DE VISA. En assemblée, un document engage ceux qui le présentent :
+     le trésorier qui l'a produit, le commissaire qui l'a vérifié. Les lignes
+     de signature rendent cet engagement matériel — et leur ABSENCE sur une
+     feuille non signée est une information en soi. */
+  .visas {
+    display: none;
+  }
+
+  .visas.imprime {
+    display: flex;
+    gap: 10mm;
+    margin-top: 10mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .visas .visa {
+    flex: 1;
+    padding-top: 14mm;
+    border-top: .8px solid #000;
+    font-size: 8pt;
+    color: #333;
+  }
+
+  .visas .visa strong {
+    display: block;
+    color: #000;
+    font-size: 8.5pt;
+  }
+
+  /* Les cartes deviennent des sections de document : plus d'ombre, plus de
+     fond, une simple règle de séparation. Les aplats de couleur vident les
+     cartouches sans rien apporter en noir et blanc. */
+  .carte, .formulaire, .chiffre {
+    box-shadow: none !important;
+    background: #fff !important;
+    border: none;
+    border-bottom: 1px solid #999;
+    border-radius: 0;
+    padding: 0 0 4mm;
+    margin: 0 0 5mm;
+    animation: none !important;
+    /* Une carte coupée en deux par un saut de page devient illisible. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .carte > h2, .formulaire > h2 {
+    font-size: 12pt;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Le filet coloré sous les titres n'a pas de sens en noir et blanc. */
+  .carte > h2::before, .formulaire > h2::before { display: none; }
+  .chiffre::before { display: none; }
+
+  /* Les chiffres clés s'alignent en ligne plutôt qu'en grille de cartes. */
+  .grille {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 10mm;
+    margin-bottom: 4mm;
+  }
+  .chiffre { padding: 0; margin: 0 0 2mm; border: none; }
+  .chiffre .valeur { font-size: 13pt; }
+  .chiffre .etiquette { font-size: 8.5pt; color: #444; }
+
+  .ligne {
+    padding: 1.5mm 0;
+    margin: 0;
+    border-bottom: 1px dotted #bbb;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .ligne:hover { background: none; }
+
+  /* Les pastilles d'état perdent leur fond mais gardent leur bordure : en noir
+     et blanc, c'est la bordure qui distingue encore les états. */
+  .etat {
+    background: none !important;
+    color: #000 !important;
+    border: 1px solid #666 !important;
+    font-weight: 700;
+  }
+
+  .avertissement {
+    background: none !important;
+    color: #000 !important;
+    border: 1.5px solid #000;
+  }
+  .avertissement::before { background: #000; color: #fff; }
+
+  /* Un versement annulé reste barré à l'impression : c'est précisément
+     l'information qu'une assemblée doit voir. */
+  .annule { text-decoration: line-through; opacity: 1; color: #555; }
+
+  .rappel {
+    background: none !important;
+    border: 1px solid #999;
+  }
+
+  /* Les liens de navigation n'ont aucun sens sur papier. */
+  a { text-decoration: none; color: #000; }
+}
+
+/* Barre d'impression : discrète, en fin de document. */
+.barre-impression {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--e5);
 }

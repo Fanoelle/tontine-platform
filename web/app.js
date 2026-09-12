@@ -249,8 +249,17 @@ const ECRANS = {
   rapprochement: ecranRapprochement,
 };
 
+/* Écrans qui produisent un DOCUMENT — ceux qu'on lit en assemblée ou qu'on
+   classe. Imprimer l'écran de saisie n'aurait aucun sens, et un bouton qui
+   n'en a pas sur la moitié des écrans cesse d'être lu. */
+const ECRANS_IMPRIMABLES = [
+  'rapport', 'impayes', 'membres', 'journal',
+  'tours', 'prets', 'aides', 'accueil',
+];
+
 async function afficher(cle) {
   ongletCourant = cle;
+  try { sessionStorage.setItem('ecran', cle); } catch { /* sans importance */ }
   dessinerOnglets();
 
   const contenu = document.getElementById('contenu');
@@ -258,6 +267,17 @@ async function afficher(cle) {
 
   try {
     await ECRANS[cle](contenu);
+
+    if (ECRANS_IMPRIMABLES.includes(cle)) {
+      const barre = document.createElement('div');
+      barre.className = 'barre-impression';
+      barre.innerHTML =
+        '<button class="secondaire" id="bouton-imprimer">' +
+        'Imprimer ce document</button>';
+      contenu.appendChild(barre);
+      document.getElementById('bouton-imprimer')
+        .addEventListener('click', imprimer);
+    }
   } catch (err) {
     contenu.innerHTML = `<div class="carte"><p class="erreur">${txt(err.message)}</p></div>`;
   }
@@ -283,9 +303,23 @@ function demarrer() {
   document.getElementById('identite').textContent =
     session.membre.nom_complet + ' · ' + session.membre.roles.join(', ').toLowerCase();
 
-  // La trésorière arrive sur la saisie : c'est son geste quotidien, et
-  // N-USG-04 impose 30 secondes. Un membre arrive sur sa situation.
-  afficher(aRole('TRESORIER') ? 'saisie' : 'accueil');
+  /* L'écran d'arrivée. Par défaut, la trésorière arrive sur la saisie — c'est
+     son geste quotidien, et N-USG-04 impose 30 secondes ; un membre arrive sur
+     sa situation.
+
+     Si un écran était consulté avant un rechargement, on y revient : perdre sa
+     place en rechargeant une page est une petite trahison, surtout sur un
+     téléphone qui recharge tout seul en changeant d'application. */
+  let arrivee = aRole('TRESORIER') ? 'saisie' : 'accueil';
+  try {
+    const demande = sessionStorage.getItem('ecran');
+    if (demande && ECRANS[demande] &&
+        ongletsVisibles().some((o) => o.cle === demande)) {
+      arrivee = demande;
+    }
+  } catch { /* stockage indisponible : on garde le défaut */ }
+
+  afficher(arrivee);
 }
 
 /* ================================================================ ÉCRANS === */
@@ -1033,6 +1067,25 @@ async function ecranAnomalies(contenu) {
    doit pouvoir contester chiffre en main. Il dit aussi ce qui ne va pas : taire
    les anomalies ouvertes reviendrait à rassurer plutôt qu'à rendre compte. */
 
+/** Valeur d'une ligne de rapport, formatée pour la lecture à voix haute.
+    On privilégie le champ numérique `montant` : analyser la chaîne `valeur`
+    casserait dès qu'un libellé ou une devise change. */
+function valeurRapport(ligne) {
+  const brut = String(ligne.valeur ?? '');
+
+  // Une valeur non monétaire — un compte, un taux, un état — s'affiche telle
+  // quelle : « 12 membres » n'a pas à devenir « 12 F ».
+  if (ligne.montant === null || ligne.montant === undefined) return txt(brut);
+
+  // Le montant n'accompagne une somme que si la valeur porte la devise ; les
+  // décomptes portent le même champ sans être de l'argent.
+  const devise = brut.match(/[A-Z]{3}$/);
+  if (!devise) return txt(brut);
+
+  return txt(Number(ligne.montant).toLocaleString('fr-FR')
+    .replace(/\u202f|\s/g, '\u00a0') + '\u00a0' + devise[0]);
+}
+
 async function ecranRapport(contenu) {
   const lignes = await appel('/rapport-assemblee');
 
@@ -1054,7 +1107,7 @@ async function ecranRapport(contenu) {
       ${r.lignes.map((l) => `
         <div class="ligne">
           <span>${txt(l.intitule)}</span>
-          <span class="montant">${txt(l.valeur)}</span>
+          <span class="montant">${valeurRapport(l)}</span>
         </div>`).join('')}
     </div>`).join('');
 
@@ -1180,6 +1233,96 @@ async function ecranRapprochement(contenu) {
   }
 
   contenu.innerHTML = html;
+}
+
+/* ------------------------------------------------------- impression --- */
+
+/* TITRES DES DOCUMENTS, par écran. Un document imprimé doit se nommer : une
+   feuille intitulée « Tontine » ne dit pas si elle porte les impayés ou le
+   rapport d'assemblée. */
+const TITRES_IMPRESSION = {
+  accueil:       'Situation du groupe',
+  impayes:       'État des cotisations en attente',
+  membres:       'Liste des membres et de leur situation',
+  tours:         'Ordre de passage et remises',
+  prets:         'État des prêts',
+  aides:         'État des aides',
+  rapport:       "Rapport d'assemblée générale",
+  anomalies:     'Points à vérifier',
+  rapprochement: 'Rapprochement Mobile Money',
+  journal:       'Historique des opérations',
+  saisie:        'Saisie de versement',
+};
+
+/* Empreinte courte du document : quatre caractères dérivés de l'horodatage et
+   de l'écran. Deux impressions du même écran à deux moments différents portent
+   des empreintes différentes — c'est ce qui permet, en cas de désaccord, de
+   savoir laquelle des deux feuilles est la plus récente. */
+function empreinte(graine) {
+  let h = 0;
+  for (const c of graine) {
+    h = ((h << 5) - h + c.charCodeAt(0)) | 0;
+  }
+  return Math.abs(h).toString(36).toUpperCase().padStart(4, '0').slice(0, 4);
+}
+
+/** Prépare l'en-tête et le pied du document, juste avant l'impression. */
+function preparerImpression() {
+  const maintenant = new Date();
+  const ecran = ongletCourant || 'accueil';
+
+  document.getElementById('impression-cachet').textContent =
+    initiales(session.groupe.nom);
+
+  document.getElementById('impression-titre').textContent =
+    TITRES_IMPRESSION[ecran] || 'Registre du groupe';
+
+  document.getElementById('impression-groupe').textContent = session.groupe.nom;
+
+  const mecanisme = {
+    ROSCA:    'Tontine rotative',
+    ASCA:     "Caisse d'épargne cumulative",
+    MUTUELLE: 'Association mutualiste',
+  }[session.groupe.type] || session.groupe.type;
+
+  document.getElementById('impression-contexte').textContent =
+    mecanisme + ' · Document établi par ' + session.membre.nom_complet;
+
+  document.getElementById('impression-arrete').innerHTML =
+    'Arrêté au<strong>' + txt(date(maintenant.toISOString())) + '</strong>' +
+    maintenant.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  const marque = maintenant.toISOString();
+  document.getElementById('impression-empreinte').textContent =
+    'Réf. ' + empreinte(marque + ecran) + ' · ' + marque.slice(0, 16).replace('T', ' ');
+
+  document.getElementById('impression-edite').textContent =
+    'Édité depuis le registre du groupe';
+
+  /* LES VISAS N'APPARAISSENT QUE SUR LES DOCUMENTS QUI ENGAGENT.
+     Une liste de membres ne se signe pas ; un rapport d'assemblée ou un état
+     de caisse, si. Faire signer n'importe quoi banaliserait la signature. */
+  const aVisa = ['rapport', 'impayes', 'journal', 'prets', 'aides'];
+  document.getElementById('impression-visas')
+    .classList.toggle('imprime', aVisa.includes(ecran));
+}
+
+/* `beforeprint` couvre Ctrl+P, le menu du navigateur et le bouton : un seul
+   point d'entrée, donc aucun chemin où l'en-tête serait oublié. */
+window.addEventListener('beforeprint', () => {
+  if (session.jeton) preparerImpression();
+});
+
+/* Safari ancien n'émet pas `beforeprint` : on double par la media query. */
+if (window.matchMedia) {
+  const impression = window.matchMedia('print');
+  const reagir = (e) => { if (e.matches && session.jeton) preparerImpression(); };
+  if (impression.addEventListener) impression.addEventListener('change', reagir);
+}
+
+function imprimer() {
+  preparerImpression();
+  window.print();
 }
 
 /* -------------------------------------------------------------- journal --- */

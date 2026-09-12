@@ -81,7 +81,38 @@
        invite à chercher comment le débloquer. -->
   <nav class="onglets" id="onglets" aria-label="Navigation principale"></nav>
 
+  <!-- EN-TÊTE ET PIED DE PAGE DU DOCUMENT IMPRIMÉ.
+       Invisibles à l'écran, ils n'apparaissent qu'à l'impression : un document
+       de tontine circule de main en main en assemblée, et doit dire de
+       lui-même de quel groupe et de quelle date il parle. -->
+  <div class="entete-impression" id="entete-impression" aria-hidden="true">
+    <span class="cachet" id="impression-cachet"></span>
+    <div>
+      <p class="titre" id="impression-titre"></p>
+      <p class="groupe" id="impression-groupe"></p>
+      <p class="contexte" id="impression-contexte"></p>
+    </div>
+    <div class="arrete" id="impression-arrete"></div>
+  </div>
+
   <main id="contenu"></main>
+
+  <div class="pied-impression" id="pied-impression" aria-hidden="true">
+    <div class="rangee">
+      <span class="empreinte" id="impression-empreinte"></span>
+      <span id="impression-edite"></span>
+    </div>
+    <p class="mention">
+      Ce document est un relevé du registre tenu par le groupe. La plateforme
+      n'encaisse aucune somme : elle enregistre des versements réalisés
+      ailleurs, en espèces ou par Mobile Money.
+    </p>
+    <div class="visas" id="impression-visas">
+      <div class="visa"><strong>Le trésorier</strong>Nom et signature</div>
+      <div class="visa"><strong>Le président</strong>Nom et signature</div>
+      <div class="visa"><strong>Le commissaire aux comptes</strong>Nom et signature</div>
+    </div>
+  </div>
 
   <div id="message" class="message" role="status" hidden></div>
 </div>
