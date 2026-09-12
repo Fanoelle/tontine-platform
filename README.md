@@ -168,6 +168,36 @@ postgresql://postgres:dev@localhost:55433/tontine
 
 Autres commandes : `arreter`, `reinitialiser`, `console`, `supprimer`.
 
+### API — installation en attente
+
+Le code de l'API est écrit mais **n'a jamais été compilé ni exécuté** : l'accès
+réseau sortant de la machine de développement est coupé (registre npm et GitHub
+injoignables, en IPv4 comme en IPv6), et le cache npm local ne couvre pas
+l'arbre de dépendances complet.
+
+Dès que le réseau est rétabli :
+
+```bash
+cd api
+cp .env.example .env          # puis remplacer JWT_SECRET
+npm install
+npm run verifier-types        # compilation TypeScript
+npm run tester                # tests d'intégration contre la vraie base
+npm run dev
+```
+
+Les tests exigent une base démarrée et les deux jeux de données chargés. Ils
+vérifient que les gardes refusent réellement : route sans jeton, jeton
+fantaisiste, mot de passe erroné, propriété non déclarée.
+
+Comptes de démonstration — mot de passe `tontine2026` :
+
+| Téléphone | Membre | Rôles |
+|---|---|---|
+| `+237690110001` | Awa Ndiaye | présidente |
+| `+237690110002` | Marie Ebolo | trésorière |
+| `+237690110003` | Fatou Bâ | commissaire aux comptes |
+
 ---
 
 ## Avancement
@@ -176,7 +206,7 @@ Autres commandes : `arreter`, `reinitialiser`, `console`, `supprimer`.
 |---|---|---|
 | **Conception** | Cahier des charges, modèle de données, diagrammes, décisions | ✅ terminé |
 | **V1 — Schéma** | 11 tables, 3 vues, 19 déclencheurs ; les 10 invariants tenus par la base ; jeu de démonstration 12 membres | ✅ terminé |
-| **V2 — Fondations API** | NestJS, `pg`, authentification, garde globale, cloisonnement par jeton | 🔨 à venir |
+| **V2 — Fondations API** | NestJS, `pg`, authentification, garde globale, cloisonnement par jeton | ⚠️ code écrit, **jamais compilé ni testé** |
 | **V3 — Groupes & membres** | CRUD groupes, règles datées, membres, rôles | ⏳ à venir |
 | **V4 — Journal & cotisations** | Saisie d'un versement, partiels, correction par écriture inverse, impayés | ⏳ à venir |
 | **V5 — Tour de rôle ROSCA** | Ordre de passage, tour courant, remise de la cagnotte | ⏳ à venir |
