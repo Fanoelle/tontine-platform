@@ -3,6 +3,12 @@ node_modules/
 .pnp
 .pnp.js
 
+# La racine n'est pas un projet Node : le seul package.json est dans api/.
+# Un npm install lancé par mégarde ici produit un lock vide de sens, qui
+# laisserait croire le contraire. Le lock d'api/ est versionné, lui.
+/package-lock.json
+/package.json
+
 # Build
 dist/
 build/
