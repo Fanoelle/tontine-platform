@@ -1,0 +1,79 @@
+@startuml etats-anomalie
+' =============================================================================
+' Diagramme d'états-transitions — Anomalie
+'
+' LEVER N'EST PAS EFFACER. Une anomalie levée sort du tableau de bord mais
+' reste au dossier avec son motif, son décideur et son horodatage. Savoir qu'un
+' écart a été constaté PUIS justifié vaut souvent plus que l'écart lui-même.
+'
+' Toute implémentation qui supprimerait une anomalie levée détruirait la piste
+' d'audit et viderait F-ANO-08 de son sens.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+
+skinparam state {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+  FontColor #12233D
+}
+
+[*] --> Detectee : écart identifié par\nla tâche de fond
+
+state "Détectée" as Detectee #FBF2E0
+state "En vérification" as EnVerif
+state "Confirmée" as Confirmee #FBEAEA
+state "Levée" as Levee #E8F4ED
+
+Detectee --> EnVerif : prise en charge\npar un vérificateur
+Detectee --> Levee : levée directe\n(gravité faible ou moyenne)
+
+EnVerif --> Confirmee : écart réel établi
+EnVerif --> Levee : justification acceptée
+EnVerif --> EnVerif : désaccord,\narbitrage du président
+
+Confirmee --> Levee : correction effectuée\net vérifiée
+
+Levee --> [*]
+
+note right of Detectee
+  Détection ASYNCHRONE, sans
+  blocage de la saisie (N-PRF-03).
+  Un trésorier qui enregistre un
+  versement inhabituel n'est pas
+  empêché : il est peut-être dans
+  son droit.
+end note
+
+note right of Levee
+  <b>Levée ne signifie jamais effacée.</b>
+  Motif, décideur et horodatage
+  restent consignés (F-ANO-08,
+  N-TRC-03). L'anomalie sort du
+  tableau de bord, jamais de la
+  piste d'audit.
+
+  <b>État terminal non réinscriptible.</b>
+  Si l'écart réapparaît, une NOUVELLE
+  anomalie est créée : deux vérifications
+  distinctes méritent deux traces.
+end note
+
+note left of Confirmee
+  <b>La plateforme signale, elle ne tranche pas.</b>
+  Aucune correction automatique :
+  le trésorier agit, la plateforme
+  enregistre.
+end note
+
+note bottom
+  <b>F-ANO-09</b> — une anomalie CRITIQUE ne peut être levée que par le
+  commissaire aux comptes, afin qu'un écart sérieux ne soit jamais levé
+  par la personne dont la saisie est en cause. C'est le principe du contrôle
+  mutuel — il protège aussi le trésorier, en attestant qu'il n'a rien dissimulé.
+end note
+
+@enduml

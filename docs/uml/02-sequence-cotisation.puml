@@ -1,0 +1,114 @@
+@startuml sequence-cotisation
+' =============================================================================
+' Diagramme de séquence — Enregistrer une cotisation (F-COT-02)
+'
+' LE POINT CENTRAL EST LA VÉRIFICATION DIFFÉRÉE. L'insertion des lignes précède
+' le contrôle d'équilibre, qui s'exécute à la validation de la transaction. Un
+' déséquilibre n'est pas corrigé : il est rejeté, et la transaction entière est
+' annulée.
+'
+' L'opération doit tenir en moins de 30 secondes (N-USG-04).
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam sequenceArrowThickness 1.5
+
+skinparam participant {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam actor {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam database {
+  BackgroundColor #FDF3E3
+  BorderColor #B07D2B
+}
+
+actor "Trésorier" as TRE
+participant "Interface" as UI
+participant "API NestJS" as API
+participant "Fonction SQL\nenregistrer_versement" as SVC
+database "PostgreSQL" as DB
+participant "Déclencheur\nd'équilibre" as TRG
+participant "File de\nnotifications" as NOT
+
+TRE -> UI : sélectionne le membre,\nsaisit montant, date, moyen
+activate UI
+UI -> UI : contrôle de surface\n(entier positif, date non future)
+UI -> API : POST /api/cotisations\n+ jeton
+activate API
+
+API -> API : vérifie le rôle TRESORIER\ncôté serveur
+note right of API
+  Le groupe est déduit du jeton,
+  jamais d'un paramètre d'URL
+  (N-SEC-03)
+end note
+
+API -> SVC : enregistrer_versement(...)
+activate SVC
+
+SVC -> DB : SELECT échéance,\nmontant attendu, reliquat
+DB --> SVC : échéance ouverte
+
+SVC -> SVC : contrôle montant > 0\net <= reliquat (scénario A2)
+SVC -> SVC : détermine les comptes\n(caisse selon moyen, cotisation du membre)
+
+group Transaction unique (N-INT-04)
+  SVC -> DB : INSERT ecriture\n(libellé, auteur, horodatage)
+  activate DB
+  DB --> SVC : ecriture_id, numéro
+
+  SVC -> DB : INSERT ligne_ecriture\nDÉBIT caisse
+  SVC -> DB : INSERT ligne_ecriture\nCRÉDIT cotisation du membre
+  SVC -> DB : INSERT cotisation\n(rattachée à l'échéance et à l'écriture)
+
+  DB -> DB : déclencheur recalcule\nmontant_regle et statut
+
+  SVC -> DB : COMMIT
+  DB -> TRG : vérification DIFFÉRÉE\nde l'équilibre
+  activate TRG
+  TRG -> TRG : Σ débits == Σ crédits ?\nau moins 2 lignes ?
+
+  alt Écriture équilibrée
+    TRG --> DB : validation acceptée
+    deactivate TRG
+    DB --> SVC : COMMIT réussi
+    deactivate DB
+    SVC --> API : cotisation, reliquat, statut
+    deactivate SVC
+    API --> UI : 201 Created
+    UI --> TRE : « Versement enregistré.\nIl reste 15 000 F à verser. »
+    API -> NOT : accusé de réception\nmis en FILE (F-NOT-02)
+    note right of NOT
+      Hors transaction, et différé
+      à une heure décente (F-NOT-06).
+      Envoyer dedans lierait la
+      durabilité de l'écriture à un
+      service externe.
+    end note
+  else Écriture déséquilibrée
+    TRG --> DB : EXCEPTION
+    DB --> SVC : ROLLBACK intégral
+    SVC --> API : erreur technique
+    API --> UI : 500
+    UI --> TRE : « L'enregistrement a échoué,\nréessayez. »
+    note right of SVC
+      Ni écriture, ni ligne, ni
+      imputation ne subsistent.
+      Un déséquilibre est un défaut
+      du service, jamais une erreur
+      de l'utilisateur (N-USG-05).
+    end note
+  end
+end
+
+deactivate API
+deactivate UI
+
+@enduml

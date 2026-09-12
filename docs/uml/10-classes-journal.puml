@@ -1,0 +1,136 @@
+@startuml classes-journal
+' =============================================================================
+' Diagramme de classes — Le cœur comptable
+'
+' Isolé du diagramme d'ensemble parce qu'il porte l'invariant le plus
+' structurant de la plateforme, et qu'il est COMMUN AUX TROIS MÉCANISMES.
+' Toute opération qui déplace de l'argent y aboutit.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #B07D2B
+  HeaderBackgroundColor #FDF3E3
+  FontColor #4A3410
+}
+
+class Compte {
+  +UUID id
+  +UUID groupe_id
+  +NatureCompte nature
+  +String libelle
+  +UUID membre_id <<optionnel>>
+  --
+  +solde() : bigint
+  +soldeA(date) : bigint
+  +mouvements(debut, fin) : LigneEcriture[]
+}
+
+class Ecriture {
+  +UUID id
+  +UUID groupe_id
+  +bigint numero <<séquentiel/groupe>>
+  +Date date_operation
+  +timestamptz cree_le
+  +String libelle
+  +NatureEcriture nature
+  +UUID ecriture_corrigee_id
+  +String motif_correction
+  +UUID saisi_par
+  --
+  +totalDebit() : bigint
+  +totalCredit() : bigint
+  +estEquilibree() : bool
+  +estCorrective() : bool
+  +genererInverse(auteur) : Ecriture
+}
+
+class LigneEcriture {
+  +UUID id
+  +UUID ecriture_id
+  +UUID compte_id
+  +Sens sens
+  +bigint montant <<toujours > 0>>
+  +int ordre
+  --
+  +estDebit() : bool
+  +estCredit() : bool
+}
+
+class Anomalie {
+  +UUID id
+  +TypeAnomalie type
+  +Gravite gravite
+  +EtatAnomalie etat
+  +timestamptz detectee_le
+  +String description
+  +UUID decideur_id
+  +String motif_levee
+  --
+  +confirmer(decideur, constat)
+  +lever(decideur, motif)
+  +estOuverte() : bool
+}
+
+Ecriture "1" *-- "2..*" LigneEcriture : compose
+Compte "1" -- "0..*" LigneEcriture : mouvemente
+Ecriture "0..1" -- "0..1" Ecriture : corrige
+Anomalie "0..*" -- "0..1" Ecriture : met en cause
+
+note top of Ecriture
+  <b>INVARIANT R-01</b> — totalDebit() == totalCredit().
+  Vérifié par DÉCLENCHEUR SQL DIFFÉRÉ, pas seulement par
+  l'application (N-INT-02). Différé parce qu'une écriture est
+  nécessairement déséquilibrée entre sa première et sa
+  dernière ligne.
+
+  <b>IMMUABLE R-02</b> — ni UPDATE ni DELETE. Deux verrous
+  superposés : privilèges révoqués sur le rôle applicatif,
+  ET déclencheur qui lève une exception. Le privilège protège
+  de l'erreur de code, le déclencheur d'une configuration
+  de privilèges erronée.
+end note
+
+note bottom of LigneEcriture
+  <b>Le montant n'est JAMAIS signé.</b>
+  Le sens (débit/crédit) est une colonne à part, pas un signe
+  porté par le montant. Un montant négatif rendrait R-03
+  inexprimable en CHECK, et deux représentations coexisteraient
+  pour un même fait comptable — un crédit de 5 000 et un débit
+  de −5 000. Une seule écriture possible pour un seul fait :
+  c'est ce qui rend la vérification d'équilibre décidable.
+end note
+
+note right of Compte
+  <b>membre_id est optionnel</b>, et c'est délibéré.
+  Le plan de comptes mêle des comptes COLLECTIFS
+  (caisse, banque, fonds d'aide, produits d'intérêt)
+  et des comptes INDIVIDUELS (cotisations, épargne,
+  créance de prêt).
+
+  C'est ce qui permet de produire un relevé individuel
+  (F-RAP-01) par simple filtrage du journal, sans
+  maintenir aucun solde parallèle.
+
+  <b>Aucune colonne de solde n'est stockée.</b>
+  solde() somme le journal. Un solde maintenu peut
+  diverger ; un solde calculé ne le peut pas.
+end note
+
+note left of Anomalie
+  <b>ecriture_corrigee_id est une AUTO-RÉFÉRENCE, pas un état.</b> Une écriture corrigée n'est pas
+  « annulée » : elle reste valide au journal,
+  neutralisée par son inverse.
+
+  Ajouter un booléen `annulee` sur Ecriture
+  violerait R-02, puisqu'il faudrait la modifier
+  après coup.
+end note
+
+@enduml

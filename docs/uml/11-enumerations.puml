@@ -1,0 +1,142 @@
+@startuml enumerations
+' =============================================================================
+' Diagramme de classes — Énumérations du domaine
+'
+' POURQUOI DES ENUM PLUTÔT QUE DES TABLES DE RÉFÉRENCE. Ces domaines sont
+' fermés et stables : un quatrième sens comptable n'existe pas, une quatrième
+' valeur de statut d'échéance demanderait de revoir la machine à états.
+'
+' Un ENUM rend la valeur invalide IMPOSSIBLE À INSÉRER, là où une table de
+' référence la rend seulement improbable. Le coût — ajouter une valeur exige
+' une migration — est ici un bénéfice : il force à traiter le cas.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #3B5C8F
+  HeaderBackgroundColor #E8EEF7
+  FontColor #12233D
+}
+
+enum TypeGroupe {
+  ROSCA
+  ASCA
+  MUTUELLE
+}
+
+enum Periodicite {
+  HEBDOMADAIRE
+  QUINZAINE
+  MENSUELLE
+  TRIMESTRIELLE
+}
+
+enum RoleMembre {
+  MEMBRE
+  TRESORIER
+  PRESIDENT
+  COMMISSAIRE
+}
+
+enum StatutEcheance {
+  ATTENDUE
+  PARTIELLE
+  REGLEE
+  IMPAYEE
+  DISPENSEE
+}
+
+enum MoyenPaiement {
+  ESPECES
+  MOBILE_MONEY
+  VIREMENT
+  COMPENSATION
+}
+
+enum Sens {
+  DEBIT
+  CREDIT
+}
+
+enum NatureCompte {
+  CAISSE
+  BANQUE
+  COTISATION_MEMBRE
+  EPARGNE_MEMBRE
+  CREANCE_PRET
+  PRODUIT_INTERET
+  FONDS_AIDE
+}
+
+enum NatureEcriture {
+  COTISATION
+  REMISE_CAGNOTTE
+  OCTROI_PRET
+  REMBOURSEMENT_PRET
+  VERSEMENT_AIDE
+  CORRECTION
+}
+
+enum TypeAnomalie {
+  COTISATION_MANQUANTE
+  REMBOURSEMENT_RETARD
+  MONTANT_INHABITUEL
+  SOLDE_INCOHERENT
+  DOUBLE_SAISIE
+  SAISIE_TARDIVE
+}
+
+enum Gravite {
+  INFORMATION
+  AVERTISSEMENT
+  CRITIQUE
+}
+
+enum StatutAnomalie {
+  DETECTEE
+  EN_VERIFICATION
+  CONFIRMEE
+  LEVEE
+}
+
+note right of MoyenPaiement
+  <b>Pourquoi COMPENSATION.</b>
+  Une cotisation est parfois réglée en
+  retenant la somme sur une cagnotte à
+  recevoir : aucun argent ne change de
+  main. L'écriture existe pourtant, sans
+  mouvement de caisse.
+
+  L'omettre forcerait le trésorier à
+  inventer un versement fictif.
+end note
+
+note right of TypeAnomalie
+  Les six valeurs correspondent UNE À UNE
+  aux exigences F-ANO-01 à F-ANO-06.
+  Cette correspondance explicite permet
+  de tracer chaque règle de détection
+  jusqu'à son exigence d'origine, dans
+  le code comme dans les tests.
+end note
+
+note bottom of Gravite
+  <b>CRITIQUE</b> déclenche une notification immédiate au trésorier
+  ET au commissaire (F-ANO-09), hors plage horaire décente.
+  Une incohérence de solde est TOUJOURS critique : en partie
+  double, un écart d'un franc n'est pas un arrondi mais le
+  symptôme d'un mécanisme défaillant.
+end note
+
+note bottom of TypeGroupe
+  <b>Immuable après création.</b> Un groupe ROSCA ne devient
+  pas une mutuelle : les règles d'argent diffèrent et les
+  écritures passées deviendraient ininterprétables.
+end note
+
+@enduml

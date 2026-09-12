@@ -1,0 +1,117 @@
+@startuml sequence-cagnotte
+' =============================================================================
+' Diagramme de séquence — Remise de la cagnotte ROSCA (F-TOU-03)
+'
+' L'ORDRE COMPTE. On ne remet jamais une cagnotte avant d'avoir vérifié que les
+' cotisations du tour sont effectivement ENCAISSÉES. Remettre sur la foi des
+' montants attendus reviendrait à distribuer de l'argent absent de la caisse —
+' c'est le mode de défaillance classique des tontines rotatives.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam sequenceArrowThickness 1.5
+
+skinparam participant {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam actor {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam database {
+  BackgroundColor #FDF3E3
+  BorderColor #B07D2B
+}
+
+actor "Trésorier" as TRE
+participant "Interface" as UI
+participant "API" as API
+participant "remettre_cagnotte" as SVC
+database "PostgreSQL" as DB
+
+TRE -> UI : ouvre l'onglet « Tours »
+activate UI
+UI -> API : GET /api/tours
+API -> DB : SELECT v_tour_courant
+DB --> API : cagnotte encaissée,\ncagnotte attendue, manque
+API --> UI : état des 12 tours
+
+alt Cotisations manquantes
+  UI --> TRE : <b>le bouton n'est pas affiché</b>\n« Il manque 90 000 F »
+  note right of UI
+    Ni grisé, ni erreur au clic :
+    ABSENT, avec la raison en clair.
+    Un bouton inactif invite à
+    chercher comment le débloquer.
+  end note
+else Cagnotte complète
+  UI --> TRE : « Remettre 275 000 F\nà Fatou Bâ »
+  TRE -> UI : clique
+  UI -> API : POST /api/tours/{id}/remise
+  activate API
+  API -> SVC : remettre_cagnotte(tour, auteur)
+  activate SVC
+
+  SVC -> DB : SELECT échéances du tour
+  DB --> SVC : liste avec statuts
+
+  SVC -> SVC : compte les échéances non réglées\n(les DISPENSÉES ne comptent pas)
+
+  alt Une échéance reste due
+    SVC --> API : EXCEPTION\n« Remise impossible : il manque X F »
+    API --> UI : 400 Bad Request
+    UI --> TRE : message d'origine du serveur
+  else Toutes réglées ou dispensées
+    SVC -> DB : SELECT solde de caisse\n(recalculé depuis le journal)
+    DB --> SVC : solde disponible
+    SVC -> SVC : <b>double sécurité</b> :\nsolde >= encaissé ?
+    note right of SVC
+      Si toutes les cotisations sont
+      encaissées, le solde suffit
+      nécessairement. Le vérifier
+      détecte un écart comptable
+      ANTÉRIEUR avant de distribuer.
+    end note
+
+    group Transaction unique
+      SVC -> DB : INSERT ecriture\nnature REMISE_CAGNOTTE
+      SVC -> DB : INSERT lignes\nDÉBIT comptes de cotisation
+      SVC -> DB : INSERT ligne\nCRÉDIT caisse
+      SVC -> DB : UPDATE tour\ndate_remise, montant, écriture
+      SVC -> DB : COMMIT
+      DB --> SVC : équilibre vérifié
+    end
+
+    SVC -> DB : SELECT tour suivant par rang
+    alt Un tour suivant existe
+      DB --> SVC : tour de rang supérieur
+    else Tous les membres ont bénéficié
+      SVC -> DB : UPDATE cycle\nstatut = CLOTURE
+      note right of SVC
+        La clôture est une CONSÉQUENCE,
+        pas une action. Aucun acteur ne
+        « clôture le cycle » : il s'achève
+        quand le dernier tour est remis.
+      end note
+    end
+
+    SVC --> API : montant remis, bénéficiaire,\ntour suivant, cycle clôturé
+    deactivate SVC
+    API --> UI : 200 OK
+    deactivate API
+    UI --> TRE : « 275 000 F remis à Fatou Bâ »
+  end
+end
+deactivate UI
+
+note across
+  <b>Le montant remis est ce qui est ENCAISSÉ, jamais ce qui est attendu (R-05).</b>
+  Calculer depuis les montants appelés créerait un déséquilibre dès la première
+  cotisation partielle. Ici : 275 000 F et non 300 000, la dispense étant déduite.
+end note
+
+@enduml

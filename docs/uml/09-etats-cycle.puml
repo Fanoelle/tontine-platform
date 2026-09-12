@@ -1,0 +1,78 @@
+@startuml etats-cycle
+' =============================================================================
+' Diagramme d'états-transitions — Cycle
+'
+' LE CYCLE ROSCA NE SE CLÔTURE PAS MANUELLEMENT. Sa clôture est la CONSÉQUENCE
+' du dernier tour soldé. Exposer un bouton « clôturer le cycle » permettrait de
+' l'arrêter alors que des membres n'ont pas encore bénéficié de leur tour — ce
+' qui viderait le mécanisme rotatif de son sens.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+
+skinparam state {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+  FontColor #12233D
+}
+
+[*] --> Preparation : création par\nle président
+
+state "Préparation" as Preparation
+state "En cours" as EnCours #E8F4ED
+state "Suspendu" as Suspendu #FBF2E0
+state "Clôturé" as Cloture #E8F4ED
+state "Annulé" as Annule #FBEAEA
+
+Preparation --> EnCours : génération\ndes échéances
+Preparation --> Annule : annulation avant\ntoute écriture
+
+EnCours --> Cloture : toutes les échéances\nen état terminal
+EnCours --> Suspendu : décision du groupe
+
+Suspendu --> EnCours : reprise
+Suspendu --> Cloture : clôture anticipée\nmotivée
+
+Cloture --> [*]
+Annule --> [*]
+
+note right of EnCours
+  <b>Un seul cycle EN COURS par groupe</b>
+  — index unique partiel en base.
+  Deux ouvertures concurrentes
+  passeraient chacune un SELECT de
+  vérification avant que l'autre ne
+  valide : seul l'index tient sous
+  concurrence.
+
+  En ROSCA, la clôture survient quand
+  le dernier tour est soldé.
+end note
+
+note right of Cloture
+  <b>État terminal et irréversible.</b>
+  Rouvrir un cycle clôturé permettrait
+  de réécrire un exercice arrêté.
+  Un déclencheur refuse la transition.
+
+  Les écritures du cycle restent au
+  journal, consultables sans limite.
+end note
+
+note left of Annule
+  Possible tant qu'aucune écriture
+  n'est rattachée au cycle. Au-delà,
+  l'annulation est impossible : le
+  journal est immuable (R-02).
+end note
+
+note bottom of Suspendu
+  Décision tracée avec décideur et motif (N-TRC-03).
+  Les échéances non appelées pendant la suspension
+  sont DÉCALÉES, jamais supprimées.
+end note
+
+@enduml

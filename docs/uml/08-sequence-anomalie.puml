@@ -1,0 +1,130 @@
+@startuml sequence-anomalie
+' =============================================================================
+' Diagramme de séquence — Détection et notification d'une anomalie (F-ANO-04)
+'
+' LA DÉTECTION NE BLOQUE JAMAIS UNE SAISIE (N-PRF-03). Elle s'exécute en tâche
+' de fond : un trésorier qui enregistre un versement inhabituel n'est pas
+' empêché — il est peut-être dans son droit. Le signalement arrive après, à qui
+' de droit.
+'
+' ELLE NE CORRIGE RIEN. Aucune écriture n'est produite ici. La plateforme
+' constate un écart et le soumet à un humain : la décision reste humaine.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam sequenceArrowThickness 1.5
+
+skinparam participant {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam actor {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam database {
+  BackgroundColor #FDF3E3
+  BorderColor #B07D2B
+}
+
+participant "Tâche de fond\nou balayage manuel" as ORD
+participant "balayer_anomalies" as DET
+database "PostgreSQL" as DB
+participant "signaler_anomalie" as ANO
+participant "File de\nnotifications" as NOT
+actor "Trésorier" as TRE
+actor "Commissaire\naux comptes" as CAC
+
+ORD -> DET : balayer_anomalies(groupe)
+activate DET
+
+group Six règles de détection, en séquence
+  DET -> DB : F-ANO-01 échéances dépassées\ndu délai de grâce
+  DET -> DB : F-ANO-04 valeurs suivies\ncontre le journal
+  DET -> DB : F-ANO-05 versements identiques\nà moins de 10 minutes
+  DET -> DB : F-ANO-06 écart entre date\nd'opération et de saisie
+  DET -> DB : F-ANO-02 échéances de prêt\nnon honorées
+  DET -> DB : F-ANO-03 montants s'écartant\nde 3 × l'écart médian
+  DB --> DET : écarts constatés
+end
+
+loop Pour chaque écart
+  DET -> ANO : signaler_anomalie(type, gravité,\ndescription, données)
+  activate ANO
+
+  ANO -> DB : SELECT anomalie ouverte\nde même type et même périmètre
+
+  alt Aucun doublon ouvert
+    ANO -> DB : INSERT anomalie\nstatut DETECTEE
+    DB --> ANO : anomalie_id
+  else Anomalie identique déjà ouverte
+    ANO -> DB : UPDATE gravité et description
+    note right of ANO
+      Pas de nouvelle notification.
+      Sans déduplication, un balayage
+      quotidien rejouerait les mêmes
+      signalements et noierait les
+      nouveaux.
+    end note
+  end
+  deactivate ANO
+end
+
+DET --> ORD : compte rendu par règle
+deactivate DET
+
+ORD -> NOT : alerter_anomalies(groupe)
+activate NOT
+
+alt Gravité CRITIQUE
+  NOT -> TRE : alerte immédiate
+  NOT -> CAC : alerte immédiate
+  note right of NOT
+    <b>F-ANO-09</b> — le commissaire est
+    TOUJOURS informé des anomalies
+    critiques. Ce n'est pas une
+    présomption de mauvaise foi : c'est
+    le contrôle mutuel, qui protège
+    aussi le trésorier en attestant
+    qu'il n'a rien dissimulé.
+
+    Une anomalie critique porte sur de
+    l'argent peut-être déjà disparu :
+    elle ne dort pas jusqu'au matin.
+  end note
+else Gravité INFORMATION ou AVERTISSEMENT
+  NOT -> TRE : mise en file, différée\nà une heure décente (F-NOT-06)
+  note right of NOT
+    Alerter le commissaire de TOUT
+    reviendrait à ne l'alerter de rien.
+  end note
+end
+deactivate NOT
+
+CAC -> DB : consulte le détail,\nle journal, le relevé du membre
+CAC -> CAC : vérifie
+
+alt L'écart s'explique
+  CAC -> DB : lever_anomalie(motif, décideur)
+  DB --> CAC : statut LEVEE
+  note right of CAC
+    <b>Lever n'est pas effacer.</b>
+    Motif, décideur et horodatage
+    restent consignés. L'anomalie sort
+    du tableau de bord, jamais de la
+    piste d'audit.
+  end note
+else L'écart est réel
+  CAC -> DB : statut CONFIRMEE + constat
+  note right of DB
+    Aucune correction automatique.
+    Le trésorier agit — écriture
+    inverse ou saisie manquante —
+    la plateforme enregistre.
+  end note
+end
+
+@enduml

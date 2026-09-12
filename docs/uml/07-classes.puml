@@ -1,0 +1,238 @@
+@startuml classes
+' =============================================================================
+' Diagramme de classes — UML
+'
+' LA SPÉCIALISATION NE PASSE PAS PAR L'HÉRITAGE. Tour, Pret et Aide ne dérivent
+' pas d'une superclasse commune : elles se rattachent au Cycle sous une
+' contrainte de cohérence de type, vérifiée par la base. Un héritage objet
+' unifierait artificiellement trois mécanismes dont les règles d'argent sont
+' incompatibles, et déplacerait les invariants du schéma vers du code.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 11
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #3B5C8F
+  HeaderBackgroundColor #E8EEF7
+  FontColor #12233D
+}
+
+package "Socle commun — les trois mécanismes" #FBFBFC {
+
+  class Groupe {
+    +UUID id
+    +String nom
+    +TypeGroupe type <<immuable>>
+    +String devise
+    +Boolean archive
+    --
+    +ouvrirCycle() : Cycle
+    +reglesEnVigueurA(date) : RegleGroupe
+    +soldeCaisseA(date) : bigint
+  }
+
+  class RegleGroupe {
+    +UUID id
+    +bigint montant_cotisation
+    +Periodicite periodicite
+    +Date date_effet
+    +Date date_fin_effet
+    --
+    +estApplicableA(date) : bool
+  }
+
+  class Membre {
+    +UUID id
+    +String nom_complet
+    +String telephone <<unique/groupe>>
+    +Date date_adhesion
+    +StatutMembre statut
+    +Boolean supprime
+    --
+    +aRole(code, date) : bool
+    +releve(debut, fin) : Releve
+  }
+
+  class MembreRole {
+    +Role role
+    +Date attribue_le
+    +Date retire_le
+    --
+    +estActif(date) : bool
+  }
+
+  class Cycle {
+    +UUID id
+    +int numero
+    +Date date_debut
+    +Date date_cloture
+    +StatutCycle statut
+    --
+    +genererEcheances() : Echeance[]
+    +tauxRecouvrement() : decimal
+  }
+
+  class Echeance {
+    +UUID id
+    +Date date_echeance
+    +bigint montant_attendu <<figé>>
+    +bigint montant_regle <<cache>>
+    +StatutEcheance statut
+    +String motif_dispense
+    --
+    +reliquat() : bigint
+    +estImpayee(date) : bool
+  }
+
+  class Cotisation {
+    +UUID id
+    +bigint montant
+    +Date date_versement
+    +MoyenPaiement moyen
+    +String reference_externe
+    --
+    +estPartielle() : bool
+  }
+}
+
+package "Journal comptable — commun aux trois" #FDF3E3 {
+
+  class Compte {
+    +UUID id
+    +NatureCompte nature
+    +String libelle
+    +UUID membre_id <<optionnel>>
+    --
+    +solde() : bigint
+    +soldeA(date) : bigint
+  }
+
+  class Ecriture {
+    +UUID id
+    +bigint numero
+    +Date date_operation
+    +String libelle
+    +NatureEcriture nature
+    +UUID ecriture_corrigee_id
+    +String motif_correction
+    +UUID saisi_par
+    --
+    +estEquilibree() : bool
+    +genererInverse() : Ecriture
+  }
+
+  class LigneEcriture {
+    +UUID id
+    +Sens sens
+    +bigint montant <<toujours positif>>
+    +int ordre
+  }
+}
+
+package "Spécialisations" #FBFBFC {
+  class Tour <<ROSCA>> {
+    +int rang
+    +UUID beneficiaire_id
+    +Date date_remise_reelle
+    +bigint montant_cagnotte
+    --
+    +cagnotteEncaissee() : bigint
+    +remettre(auteur) : Ecriture
+  }
+
+  class Pret <<ASCA>> {
+    +bigint montant_accorde
+    +bigint capital_restant_du
+    +decimal taux_interet
+    +StatutPret statut
+    --
+    +echeancier() : EcheancePret[]
+    +estEnRetard(date) : bool
+  }
+
+  class EpargneMembre <<ASCA>> {
+    +int parts
+    +bigint solde_calcule <<cache>>
+    --
+    +quotePartInterets(total) : bigint
+  }
+
+  class Aide <<MUTUELLE>> {
+    +String motif
+    +bigint montant_demande
+    +bigint montant_accorde
+    +StatutAide statut
+    --
+    +verifierEligibilite() : bool
+  }
+}
+
+class Anomalie {
+  +TypeAnomalie type
+  +Gravite gravite
+  +StatutAnomalie statut
+  +String description
+  +JSONB donnees
+  +String motif_levee
+  --
+  +lever(decideur, motif)
+}
+
+Groupe "1" *-- "0..*" RegleGroupe : historise
+Groupe "1" *-- "1..*" Membre : regroupe
+Groupe "1" *-- "0..*" Cycle : enchaîne
+Groupe "1" *-- "0..*" Compte : plan de comptes
+Membre "1" -- "0..*" MembreRole : détient
+Cycle "1" *-- "1..*" Echeance : appelle
+Membre "1" -- "0..*" Echeance : doit
+Echeance "1" -- "0..*" Cotisation : est réglée par
+Cotisation "1" -- "1" Ecriture : référence
+
+Ecriture "1" *-- "2..*" LigneEcriture : compose
+Compte "1" -- "0..*" LigneEcriture : mouvemente
+Ecriture "0..1" -- "0..1" Ecriture : corrige
+
+Cycle "1" *-- "0..*" Tour : ROSCA uniquement
+Cycle "1" *-- "0..*" Pret : ASCA uniquement
+Cycle "1" *-- "0..*" EpargneMembre : ASCA uniquement
+Cycle "1" *-- "0..*" Aide : MUTUELLE uniquement
+Membre "1" -- "0..1" Tour : bénéficie une fois
+
+Anomalie "0..*" -- "0..1" Ecriture : met en cause
+
+note right of Ecriture
+  <b>R-01</b> — Σ débits = Σ crédits.
+  Vérifié par DÉCLENCHEUR SQL, pas
+  seulement par l'application (N-INT-02).
+
+  <b>R-02</b> — ni UPDATE ni DELETE.
+  Une erreur se corrige par une écriture
+  inverse portant ecriture_corrigee_id.
+end note
+
+note bottom of LigneEcriture
+  <b>Le montant n'est jamais signé.</b>
+  Le sens (débit/crédit) est une colonne
+  à part. Un montant négatif rendrait R-03
+  inexprimable en CHECK, et deux
+  représentations coexisteraient pour un
+  même fait comptable.
+end note
+
+note left of Echeance
+  <b>montant_attendu est FIGÉ</b> à la
+  génération (R-09) : sans cela, changer
+  la règle modifierait rétroactivement
+  les arriérés de tous les membres.
+
+  <b>montant_regle est un CACHE</b> maintenu
+  par déclencheur. Un écart avec la somme
+  réelle est ce que détecte F-ANO-04.
+end note
+
+@enduml

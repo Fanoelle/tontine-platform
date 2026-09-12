@@ -1,0 +1,172 @@
+@startuml cas-utilisation
+' =============================================================================
+' Diagramme de cas d'utilisation — UML
+'
+' POURQUOI PLANTUML ET NON MERMAID. Mermaid ne dispose pas de diagramme de cas
+' d'utilisation : il fallait le simuler avec un graphe orienté, ce qui perdait
+' la notation UML — acteurs en bonhommes, cas en ellipses, relations «include».
+' PlantUML rend la notation standard, et hors ligne.
+'
+' Répond à « qui fait quoi ». Ni l'ordre des opérations (voir les séquences),
+' ni la structure des données (voir les classes).
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+
+skinparam actor {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #8A8A8A
+  ArrowColor #3B5C8F
+}
+skinparam package {
+  BackgroundColor #FBFBFC
+  BorderColor #C8C8C8
+}
+
+left to right direction
+
+actor "Membre" as MBR
+actor "Trésorier" as TRE
+actor "Président" as PRE
+actor "Commissaire\naux comptes" as CAC
+actor "Administrateur\nplateforme" as ADM
+
+rectangle "Plateforme de gestion des tontines" {
+
+  package "Groupes et règles" {
+    usecase "Créer un groupe\net son mécanisme" as G1
+    usecase "Définir les règles" as G2
+    usecase "Consulter la fiche" as G3
+    usecase "Ouvrir ou clôturer\nun cycle" as G4
+  }
+
+  package "Membres et rôles" {
+    usecase "Ajouter un membre" as M1
+    usecase "Attribuer des rôles" as M2
+    usecase "Consulter la situation\ndes membres" as M3
+    usecase "Suspendre ou radier" as M4
+  }
+
+  package "Cotisations" {
+    usecase "Générer les échéances" as C1
+    usecase "Enregistrer\nun versement" as C2
+    usecase "Gérer un versement\npartiel" as C3
+    usecase "Identifier les impayés" as C4
+    usecase "Corriger par\nécriture inverse" as C5
+    usecase "Accorder une dispense" as C6
+  }
+
+  package "Tour de rôle (ROSCA)" {
+    usecase "Définir l'ordre\nde passage" as T1
+    usecase "Consulter le prochain\nbénéficiaire" as T2
+    usecase "Remettre la cagnotte" as T3
+  }
+
+  package "Prêts (ASCA)" {
+    usecase "Demander un prêt" as P1
+    usecase "Approuver ou refuser" as P2
+    usecase "Enregistrer un\nremboursement" as P3
+    usecase "Rééchelonner" as P4
+  }
+
+  package "Aides (Mutuelle)" {
+    usecase "Demander une aide" as A1
+    usecase "Approuver et verser" as A2
+    usecase "Vérifier l'éligibilité" as A3
+  }
+
+  package "Comptabilité" #FDF3E3 {
+    usecase "Journaliser une\nécriture équilibrée" as K1
+    usecase "Consulter le journal" as K2
+    usecase "Produire le solde\nd'un compte" as K3
+  }
+
+  package "Anomalies" {
+    usecase "Détecter une anomalie" as N1
+    usecase "Classer par gravité" as N2
+    usecase "Lever avec motif" as N3
+    usecase "Notifier" as N4
+  }
+
+  package "Rapports" {
+    usecase "Consulter son relevé" as R1
+    usecase "Situation de caisse" as R2
+    usecase "Tableau de bord" as R4
+  }
+
+  package "Exploitation" {
+    usecase "Maintenir le service" as X1
+  }
+}
+
+MBR --> C2
+MBR --> R1
+MBR --> T2
+MBR --> P1
+MBR --> A1
+MBR --> G3
+
+TRE --> C1
+TRE --> C2
+TRE --> C3
+TRE --> C4
+TRE --> C5
+TRE --> T3
+TRE --> P3
+TRE --> R2
+TRE --> R4
+TRE --> M1
+
+PRE --> G1
+PRE --> G2
+PRE --> G4
+PRE --> M2
+PRE --> M4
+PRE --> T1
+PRE --> C6
+PRE --> P2
+PRE --> P4
+PRE --> A2
+
+CAC --> K2
+CAC --> K3
+CAC --> N3
+CAC --> M3
+
+ADM --> X1
+
+C2 ..> K1 : <<include>>
+C5 ..> K1 : <<include>>
+T3 ..> K1 : <<include>>
+P3 ..> K1 : <<include>>
+A2 ..> K1 : <<include>>
+A2 ..> A3 : <<include>>
+T3 ..> C4 : <<precondition>>
+N1 ..> N2 : <<trigger>>
+N2 ..> N4 : <<trigger>>
+K1 ..> K3 : <<feeds>>
+K3 ..> N1 : <<feeds>>
+
+note bottom of K1
+  <b>Le nœud central.</b>
+  Tout cas qui déplace de l'argent
+  y passe, sans exception.
+  C'est ce qui garantit qu'aucun
+  mouvement n'échappe au journal.
+end note
+
+note right of ADM
+  <b>Volontairement isolé.</b>
+  Aucun lien vers les domaines
+  métier : N-SEC-02 lui interdit
+  l'accès aux données des groupes.
+end note
+
+@enduml

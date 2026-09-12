@@ -158,25 +158,20 @@ Le cumul de rôles est autorisé — dans les petits groupes, une même personne
 préside et tient la caisse — mais l'interface le signale quand il affaiblit le
 contrôle mutuel.
 
+#### Qui fait quoi — diagramme de cas d'utilisation
+
+![Cas d'utilisation](docs/uml/images/cas-utilisation.png)
+
+Les traits pleins portent l'initiative d'un acteur, les pointillés une
+dépendance entre cas. **Le nœud central est « Journaliser une écriture
+équilibrée »** : tout cas qui déplace de l'argent y passe, sans exception.
+
+**L'administrateur plateforme est volontairement isolé** — aucun lien vers les
+domaines métier, car N-SEC-02 lui interdit l'accès aux données des groupes.
+
 ### Cycle de vie d'une cotisation
 
-```
-        génération des échéances du cycle
-                     │
-                     ▼
-                ATTENDUE ──────── dispense accordée ──────► DISPENSÉE
-                 │    │
-   versement     │    │  date dépassée
-   partiel       │    └──────────────► IMPAYÉE
-                 │                        │
-                 ▼                        │ versement tardif
-           PARTIELLE ◄────────────────────┘
-                 │    ▲
-     reliquat    │    │ correction par
-     résorbé     │    │ écriture inverse
-                 ▼    │
-              RÉGLÉE ─┘
-```
+![États d'une échéance](docs/uml/images/etats-echeance.png)
 
 **`IMPAYÉE` n'est pas terminal** : un versement tardif reste toujours possible,
 et c'est le cas courant dans les groupes réels. **`RÉGLÉE` admet une sortie** :
@@ -449,6 +444,25 @@ insère l'écriture, ses lignes et la cotisation en une seule transaction.
 Reconstituer ce séquencement en TypeScript exposerait à l'interrompre à
 mi-chemin — et le déclencheur d'équilibre étant différé au `COMMIT`, une
 écriture incomplète serait rejetée.
+
+#### Le parcours d'un versement, de la saisie au journal
+
+![Séquence — enregistrer une cotisation](docs/uml/images/sequence-cotisation.png)
+
+Le point central est la **vérification différée** : les lignes sont insérées
+avant le contrôle d'équilibre, qui s'exécute à la validation de la transaction.
+Un déséquilibre n'est pas corrigé — il est rejeté, et la transaction entière
+annulée. Ni écriture, ni ligne, ni imputation ne subsistent.
+
+#### La structure des données
+
+![Diagramme de classes](docs/uml/images/classes.png)
+
+**La spécialisation ne passe pas par l'héritage.** `Tour`, `Pret` et `Aide` ne
+dérivent pas d'une superclasse commune : elles se rattachent au cycle sous une
+contrainte de cohérence de type, vérifiée par la base. Un héritage objet
+unifierait artificiellement trois mécanismes dont les règles d'argent sont
+incompatibles.
 
 **L'API se connecte en `tontine_app`**, rôle dont les privilèges `UPDATE` et
 `DELETE` sont révoqués sur le journal. Elle le vérifie au démarrage :
@@ -787,11 +801,41 @@ saisonnières, groupes de plus de cinquante membres.
 | [Conception de l'interface](docs/conception-interface.md) | Écrans, enchaînement, vocabulaire employé |
 | [Modèle de données](docs/modele-de-donnees.md) | Schéma, dictionnaire, invariants |
 | [Détection d'anomalies](docs/detection-anomalies.md) | Règles, seuils, gravités |
-| [Diagrammes](docs/diagrammes/) | Cas d'utilisation, classes, séquences, états |
+| [Diagrammes UML](docs/uml/images/) | **Images PNG** — cas d'utilisation, séquences, états, classes |
+| [Sources des diagrammes](docs/uml/) | Fichiers PlantUML, régénérables hors ligne |
+| [Diagrammes (Markdown)](docs/diagrammes/) | Mêmes diagrammes commentés, en Mermaid |
 | [Décisions](docs/decisions/) | Arbitrages d'architecture et alternatives écartées |
 
+### Diagrammes UML
+
+Onze diagrammes en **notation UML standard**, rendus en PNG :
+
+| Diagramme | Type UML | Ce qu'il montre |
+|---|---|---|
+| `cas-utilisation.png` | Cas d'utilisation | Qui fait quoi — acteurs, cas, relations `<<include>>` |
+| `sequence-cotisation.png` | Séquence | Enregistrer un versement, de la saisie au journal |
+| `sequence-cagnotte.png` | Séquence | Remise de la cagnotte, avec les deux refus possibles |
+| `sequence-anomalie.png` | Séquence | Détection en tâche de fond, puis notification |
+| `etats-cycle.png` | États-transitions | Cycle de vie d'un cycle |
+| `etats-echeance.png` | États-transitions | Cycle de vie d'une échéance |
+| `etats-pret.png` | États-transitions | Cycle de vie d'un prêt |
+| `etats-anomalie.png` | États-transitions | Détection, vérification, levée |
+| `classes.png` | Classes | Socle commun et trois spécialisations |
+| `classes-journal.png` | Classes | Le cœur comptable — écriture, ligne, compte |
+| `enumerations.png` | Classes | Les onze énumérations du domaine |
+
+```bash
+./scripts/generer-uml.sh        # régénère les 11 PNG depuis docs/uml/*.puml
+```
+
+**PlantUML plutôt que Mermaid.** Mermaid ne dispose pas de diagramme de cas
+d'utilisation — il fallait le simuler par un graphe orienté, perdant la
+notation UML. PlantUML produit la notation standard et rend **hors ligne**,
+sans dépendance réseau.
+
 **Dossier complet en PDF** : `python3 scripts/dossier-pdf.py` assemble les onze
-documents en un seul fichier de 48 pages, avec page de garde et sommaire.
+documents en un seul fichier de 49 pages — page de garde, sommaire, et les
+**onze diagrammes en images**, plus aucune source illisible.
 
 ---
 

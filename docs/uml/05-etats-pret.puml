@@ -1,0 +1,86 @@
+@startuml etats-pret
+' =============================================================================
+' Diagramme d'états-transitions — Prêt ASCA
+'
+' RÉÉCHELONNÉ N'EFFACE JAMAIS LA DETTE. Le capital restant dû est strictement
+' inchangé par la transition : seul l'échéancier change. Une implémentation qui
+' remettrait le compteur à zéro transformerait un aménagement en remise de
+' dette — décision qui n'appartient pas au système mais au groupe.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+
+skinparam state {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+  FontColor #12233D
+}
+
+[*] --> Demande : demande déposée\npar le membre
+
+state "Demandé" as Demande
+state "Approuvé" as Approuve
+state "Refusé" as Refuse #FBEAEA
+state "En remboursement" as EnRemb #E8F4ED
+state "En retard" as EnRetard #FBF2E0
+state "Rééchelonné" as Reech #FBF2E0
+state "Soldé" as Solde #E8F4ED
+
+Demande --> Approuve : décision favorable\ndu président
+Demande --> Refuse : décision défavorable\nMOTIVÉE
+
+Approuve --> EnRemb : fonds remis\net écriture d'octroi
+
+EnRemb --> EnRemb : remboursement partiel
+EnRemb --> EnRetard : échéance dépassée
+EnRemb --> Solde : capital restant dû\nà zéro
+
+EnRetard --> EnRemb : régularisation
+EnRetard --> Reech : nouvel échéancier\naccordé
+EnRetard --> Solde : remboursement\nintégral tardif
+
+Reech --> EnRemb : application du\nnouvel échéancier
+Reech --> EnRetard : nouvel échéancier\nnon respecté
+
+Solde --> [*]
+Refuse --> [*]
+
+note right of Approuve
+  <b>R-06</b> — le montant accordé
+  n'excède pas l'avoir disponible
+  de la caisse, recalculé depuis
+  le journal au moment de
+  l'approbation.
+end note
+
+note right of Solde
+  <b>R-07</b> — le capital restant dû
+  décroît jusqu'à zéro, jamais
+  en deçà. Contrainte CHECK en base :
+  un remboursement excédentaire
+  est refusé, jamais absorbé.
+end note
+
+note left of Reech
+  <b>N'efface pas la dette.</b>
+  Le capital restant dû est
+  STRICTEMENT inchangé ; seul
+  l'échéancier change. Les
+  échéances déjà réglées sont
+  conservées : elles portent des
+  remboursements rattachés à
+  des écritures.
+end note
+
+note bottom of Refuse
+  <b>État terminal.</b> Une nouvelle demande
+  donne lieu à un NOUVEAU prêt, jamais à
+  la réouverture de celui-ci. Motif obligatoire :
+  un refus sans explication est ingérable
+  pour le groupe.
+end note
+
+@enduml

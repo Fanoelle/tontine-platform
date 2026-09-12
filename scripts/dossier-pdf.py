@@ -45,6 +45,24 @@ DECISIONS = [
     ('docs/decisions/0003-journal-partie-double.md',             'Décision 3 — Partie double'),
 ]
 
+
+# Images UML rendues par PlantUML (scripts/generer-uml.sh).
+#
+# Associe chaque document au(x) diagramme(s) qui l'illustre(nt), dans l'ordre
+# où ses blocs Mermaid apparaissent. Un document absent de cette table garde
+# ses blocs en source — c'est le repli, pas une erreur.
+DIAGRAMMES_UML = {
+    'docs/diagrammes/cas-utilisation.md': ['cas-utilisation'],
+    'docs/diagrammes/sequences.md': [
+        'sequence-cotisation', 'sequence-cagnotte', 'sequence-anomalie'],
+    'docs/diagrammes/etats.md': [
+        'etats-cycle', 'etats-echeance', 'etats-pret', 'etats-anomalie'],
+    'docs/diagrammes/classes.md': [
+        'classes', 'classes-journal', 'enumerations'],
+}
+
+IMAGES_UML = RACINE / 'docs' / 'uml' / 'images'
+
 PUCE = re.compile(r'^\s*[-*] ')
 NUM = re.compile(r'^\s*\d+\. ')
 
@@ -105,8 +123,21 @@ def recoller(source: str) -> list[str]:
 
 
 def rendre_mermaid(code: str, dossier: pathlib.Path, index: int,
-                   mmdc: str | None) -> str:
-    """Rend un bloc Mermaid en image, ou le présente en texte si impossible."""
+                   mmdc: str | None,
+                   images: list[str] | None = None,
+                   rang: int = 0) -> str:
+    """Rend un bloc de diagramme en image.
+
+    Trois voies, dans l'ordre de préférence : une image UML PlantUML déjà
+    rendue, un rendu Mermaid à la volée, ou la source en texte encadré.
+    """
+    # 1. Image PlantUML — la meilleure : notation UML standard, rendue hors
+    #    ligne, et déjà vérifiée à l'œil.
+    if images and rang < len(images):
+        png = IMAGES_UML / (images[rang] + '.png')
+        if png.exists():
+            return f'<div class="diagramme"><img src="{png}"></div>'
+
     if mmdc:
         src = dossier / f'diagramme-{index}.mmd'
         png = dossier / f'diagramme-{index}.png'
@@ -129,7 +160,8 @@ def rendre_mermaid(code: str, dossier: pathlib.Path, index: int,
 
 
 def convertir(source: str, dossier: pathlib.Path, compteur: list[int],
-              mmdc: str | None, decalage: int = 0) -> str:
+              mmdc: str | None, decalage: int = 0,
+              images: list[str] | None = None) -> str:
     """Convertit un document Markdown en HTML.
 
     `decalage` abaisse le niveau des titres : dans un dossier assemblé, le titre
@@ -138,6 +170,7 @@ def convertir(source: str, dossier: pathlib.Path, compteur: list[int],
     lignes = recoller(source)
     out: list[str] = []
     i = 0
+    rang_diagramme = 0
     dans_liste = dans_cite = False
 
     def fermer_liste():
@@ -169,7 +202,9 @@ def convertir(source: str, dossier: pathlib.Path, compteur: list[int],
             code = '\n'.join(bloc)
             if langage == 'mermaid':
                 compteur[0] += 1
-                out.append(rendre_mermaid(code, dossier, compteur[0], mmdc))
+                out.append(rendre_mermaid(code, dossier, compteur[0], mmdc,
+                                          images, rang_diagramme))
+                rang_diagramme += 1
             else:
                 out.append('<pre>' + html.escape(code) + '</pre>')
             continue
@@ -317,7 +352,9 @@ def main() -> int:
             # le titre de section, pour une numérotation homogène du dossier.
             texte = re.sub(r'^#\s+.*?\n', '', texte, count=1)
             corps.append('<h2>' + html.escape(titre) + '</h2>')
-            corps.append(convertir(texte, dossier, compteur, mmdc, decalage=1))
+            corps.append(convertir(texte, dossier, compteur, mmdc,
+                                   decalage=1,
+                                   images=DIAGRAMMES_UML.get(chemin)))
             print('  intégré :', chemin)
 
         page = ('<!doctype html><html lang="fr"><head><meta charset="utf-8">'

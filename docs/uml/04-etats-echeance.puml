@@ -1,0 +1,79 @@
+@startuml etats-echeance
+' =============================================================================
+' Diagramme d'états-transitions — Échéance de cotisation
+'
+' DEUX PROPRIÉTÉS CONTRE-INTUITIVES, ET DÉLIBÉRÉES :
+'
+'   IMPAYÉE n'est PAS terminal. Marquer une échéance impayée comme close
+'   simplifierait les requêtes, mais interdirait le versement tardif — qui est
+'   le cas courant dans les groupes réels.
+'
+'   RÉGLÉE admet une sortie. Une correction par écriture inverse ramène
+'   l'échéance en PARTIELLE. Traiter RÉGLÉE comme terminal rendrait toute
+'   correction impossible, ou pire, conduirait à modifier l'écriture d'origine.
+' =============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 12
+skinparam shadowing false
+
+skinparam state {
+  BackgroundColor #E8EEF7
+  BorderColor #3B5C8F
+  FontColor #12233D
+}
+
+[*] --> Attendue : génération des échéances\ndu cycle (F-COT-01)
+
+state "Attendue" as Attendue
+state "Partiellement réglée" as Partielle #FBF2E0
+state "Réglée" as Reglee #E8F4ED
+state "Impayée" as Impayee #FBEAEA
+state "Dispensée" as Dispensee #E8F4ED
+
+Attendue --> Partielle : versement inférieur\nau montant appelé
+Attendue --> Reglee : versement égal\nau montant appelé
+Attendue --> Impayee : date dépassée\nsans versement
+Attendue --> Dispensee : dispense accordée\npar le président
+
+Partielle --> Partielle : versement complémentaire\ninsuffisant
+Partielle --> Reglee : reliquat résorbé
+Partielle --> Impayee : date dépassée,\nreliquat non résorbé
+Partielle --> Dispensee : dispense du reliquat
+
+Impayee --> Partielle : versement tardif partiel
+Impayee --> Reglee : versement tardif intégral
+Impayee --> Dispensee : dispense accordée\naprès coup
+
+Reglee --> Partielle : correction par\nécriture inverse (F-COT-05)
+
+Reglee --> [*]
+Dispensee --> [*]
+
+note right of Impayee
+  <b>N'est pas terminal.</b>
+  Un versement tardif reste
+  toujours possible — c'est
+  le cas courant (F-COT-04).
+  Aucune pénalité automatique :
+  la plateforme applique les
+  règles du groupe, elle ne
+  les édicte pas.
+end note
+
+note left of Reglee
+  <b>La sortie vers Partielle n'annule rien.</b>
+  Elle traduit une écriture
+  inverse : l'écriture d'origine
+  reste au journal, neutralisée.
+  R-02 interdit absolument de
+  la modifier.
+end note
+
+note bottom of Dispensee
+  Motif obligatoire et décideur tracé (N-TRC-03).
+  Les versements déjà effectués restent acquis.
+end note
+
+@enduml
