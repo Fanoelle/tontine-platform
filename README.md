@@ -99,8 +99,8 @@ L'apport différenciant. Six familles de signalements :
 
 ```
 ┌─────────────────┐     HTTPS      ┌──────────────────┐
-│   Web (React)   │ ─────────────► │   API (NestJS)   │
-│   responsive    │ ◄───────────── │   TypeScript     │
+│  Web — 3 fichiers│ ─────────────► │   API (NestJS)   │
+│  sans dépendance │ ◄───────────── │   TypeScript     │
 └─────────────────┘   JSON, JWT    └────────┬─────────┘
                                             │ pg (SQL brut)
                                    ┌────────┴─────────┐
@@ -124,18 +124,21 @@ précisément ce qui fait la sûreté du modèle.
 
 ```
 tontine-platform/
-├── api/              API NestJS + TypeScript          (V2)
+├── api/              API NestJS — 42 routes, 59 tests d'intégration
 ├── db/
-│   ├── migrations/
-│   │   ├── 001_socle.sql        Types, groupe, règles datées, membres, rôles
-│   │   ├── 002_journal.sql      Comptes, écritures, équilibre R-01, immuabilité R-02
-│   │   └── 003_cycle_rosca.sql  Cycle, échéances, cotisations, tour ROSCA
-│   └── seeds/
-│       └── 001_demonstration.sql  Tontine de 12 membres, cycle en cours
+│   ├── migrations/   14 fichiers, numérotés, idempotents
+│   │   ├── 001–003   Socle, journal en partie double, cycle ROSCA
+│   │   ├── 004       Utilisateurs et journal d'accès
+│   │   ├── 005–007   Cotisations, tour de rôle, restitution
+│   │   ├── 008–009   Épargne et prêts ASCA, aides mutualistes
+│   │   ├── 010–011   Moteur d'anomalies, métier des prêts et aides
+│   │   └── 012–014   Fin de cycle, Mobile Money, rapports et exports
+│   ├── seeds/        4 fichiers — un groupe par mécanisme, dates relatives
+│   └── recette/      3 scénarios d'acceptation, un par jalon
 ├── web/              Interface — 3 fichiers, aucune dépendance
 │   ├── index.html    Structure des écrans
 │   ├── style.css     Téléphone d'abord, polices système
-│   └── app.js        Session, appels API, rendu des 6 écrans
+│   └── app.js        Session, appels API, rendu des 9 écrans
 ├── docs/
 │   ├── cahier-des-charges.md     Exigences codées (F-COT-02, R-01…)
 │   ├── modele-de-donnees.md      MCD, dictionnaire, invariants
@@ -178,7 +181,7 @@ cd api
 cp .env.example .env          # puis remplacer JWT_SECRET
 npm install
 npm run verifier-types        # compilation TypeScript
-npm run tester                # 22 tests d'intégration contre la vraie base
+npm run tester                # 59 tests d'intégration contre la vraie base
 npm run dev                   # http://localhost:3100/api
 ```
 
@@ -327,8 +330,8 @@ qu'il sert à illustrer.
 | **V3 — Routes métier** | Cotisations, tours, membres, tableau de bord, journal | ✅ terminé — 22 tests verts |
 | **Écrans** | Interface web, 6 écrans, servie par l'API | ✅ terminé — 33 ko |
 | **Jalon 2** | Prêts ASCA, épargne, aides mutualistes, moteur d'anomalies, écrans | ✅ terminé — 40 tests verts |
-| **Jalon 2 — notifications** | Rappels e-mail, alertes d'anomalie | ⏳ à venir |
-| **Jalon 3** | Rapprochement Mobile Money, WhatsApp, exports, archivage | ⏳ à venir |
+| **Jalon 3** | Rapprochement Mobile Money, exports, rapport d'assemblée, archivage, redistribution | ✅ terminé — 59 tests verts |
+| **Notifications** | Rappels e-mail (F-NOT), canal WhatsApp (F-NOT-05) | ⏳ à venir |
 
 ### Invariants vérifiés en base
 

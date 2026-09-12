@@ -205,6 +205,19 @@ commande_recette_jalon2() {
   psql_base -q < "$RACINE/db/recette/002_jalon2.sql"
 }
 
+commande_recette_jalon3() {
+  conteneur_tourne || erreur "le conteneur n'est pas démarré — lancez : $0 demarrer"
+
+  # Comme les deux précédentes, cette recette CONSOMME le jeu de données : elle
+  # rééchelonne un prêt, importe un relevé et éprouve l'archivage. On repart
+  # d'un état neuf, sans quoi un second passage échouerait pour une mauvaise
+  # raison — un prêt déjà rééchelonné, un relevé déjà importé.
+  commande_reinitialiser > /dev/null
+
+  bannière 'Recette — critère du jalon 3'
+  psql_base -q < "$RACINE/db/recette/003_jalon3.sql"
+}
+
 commande_aide() {
   cat <<'AIDE'
 Usage : ./scripts/db.sh <commande>
@@ -215,6 +228,7 @@ Usage : ./scripts/db.sh <commande>
   verifier        Éprouve les invariants : tente des violations, attend un refus
   recette         Mène un cycle ROSCA complet et vérifie le critère du jalon 1
   recette-jalon2  Prêt ASCA soldé, aide versée, anomalies détectées (jalon 2)
+  recette-jalon3  Rééchelonnement, rapprochement, rapports, archivage (jalon 3)
   console         Ouvre une console psql
   tester          Vérifie la connexion
   supprimer       Supprime le conteneur et ses données (confirmation demandée)
@@ -228,6 +242,7 @@ case "${1:-aide}" in
   verifier)      commande_verifier ;;
   recette)         commande_recette ;;
   recette-jalon2)  commande_recette_jalon2 ;;
+  recette-jalon3)  commande_recette_jalon3 ;;
   console)       commande_console ;;
   tester)        commande_tester ;;
   supprimer)     commande_supprimer ;;
