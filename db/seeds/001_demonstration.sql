@@ -70,7 +70,17 @@ DECLARE
     v_cycle    UUID;
     v_caisse   UUID;
     v_regle    UUID;
-    v_debut    DATE := DATE '2026-01-05';
+    -- LES DATES SONT RELATIVES AU JOUR DE CHARGEMENT, jamais figées.
+    --
+    -- Une date en dur vieillit : un jeu daté de janvier consulté en septembre
+    -- présente huit mois de retard fictif, et le moteur d'anomalies signale
+    -- alors des dizaines de saisies tardives et d'impayés qui n'en sont pas.
+    -- Le bruit ne vient pas des règles de détection mais du décor.
+    --
+    -- Le cycle démarre donc deux mois avant aujourd'hui : les tours 1 et 2 sont
+    -- passés et soldés, le tour 3 est le tour courant. C'est exactement l'état
+    -- intermédiaire qui donne du contenu aux écrans.
+    v_debut    DATE := (date_trunc('month', CURRENT_DATE) - INTERVAL '2 months')::DATE + 4;
 
     -- 12 membres : nom, téléphone. L'ordre du tableau fixe l'ordre de passage,
     -- décidé par tirage au sort en assemblée (F-TOU-01).
@@ -174,10 +184,22 @@ BEGIN
             SELECT id INTO v_echeance FROM echeance
              WHERE tour_id = v_tours[i] AND membre_id = v_membres[j];
 
-            INSERT INTO ecriture (groupe_id, date_operation, libelle, nature, saisi_par)
+            -- `cree_le` EST ANTIDATÉ, pas laissé à son défaut `now()`.
+            --
+            -- Sans cela, une écriture dont l'opération remonte à deux mois
+            -- serait enregistrée comme saisie aujourd'hui : le détecteur
+            -- F-ANO-06 y verrait une saisie tardive de soixante jours, et le
+            -- jeu de démonstration produirait à lui seul trente-cinq
+            -- signalements sans objet.
+            --
+            -- Le décor doit être cohérent jusque dans ses horodatages, sinon
+            -- il met en défaut les règles qu'il sert à illustrer.
+            INSERT INTO ecriture (groupe_id, date_operation, libelle, nature,
+                                  saisi_par, cree_le)
             VALUES (v_groupe, v_date,
                     'Cotisation tour ' || i || ' — ' || v_noms[j],
-                    'COTISATION', v_tresorier)
+                    'COTISATION', v_tresorier,
+                    v_date::TIMESTAMPTZ + INTERVAL '9 hours')
             RETURNING id INTO v_ecriture;
 
             -- Partie double : la caisse reçoit (débit), le membre est crédité de
@@ -197,10 +219,12 @@ BEGIN
         -- En ROSCA le solde de caisse retombe à zéro à chaque tour (§3.1).
         v_cagnotte := v_montant * 12;
 
-        INSERT INTO ecriture (groupe_id, date_operation, libelle, nature, saisi_par)
+        INSERT INTO ecriture (groupe_id, date_operation, libelle, nature,
+                              saisi_par, cree_le)
         VALUES (v_groupe, v_date + 2,
                 'Remise cagnotte tour ' || i || ' — ' || v_noms[i],
-                'REMISE_CAGNOTTE', v_tresorier)
+                'REMISE_CAGNOTTE', v_tresorier,
+                (v_date + 2)::TIMESTAMPTZ + INTERVAL '11 hours')
         RETURNING id INTO v_ecriture;
 
         INSERT INTO ligne_ecriture (ecriture_id, compte_id, sens, montant, ordre)
@@ -229,9 +253,11 @@ BEGIN
         -- Khadija (rang 9) ne verse que 10 000 F : reliquat de 15 000 F.
         v_verse := CASE WHEN j = 9 THEN 10000 ELSE v_montant END;
 
-        INSERT INTO ecriture (groupe_id, date_operation, libelle, nature, saisi_par)
+        INSERT INTO ecriture (groupe_id, date_operation, libelle, nature,
+                              saisi_par, cree_le)
         VALUES (v_groupe, v_date, 'Cotisation tour 3 — ' || v_noms[j],
-                'COTISATION', v_tresorier)
+                'COTISATION', v_tresorier,
+                v_date::TIMESTAMPTZ + INTERVAL '9 hours')
         RETURNING id INTO v_ecriture;
 
         INSERT INTO ligne_ecriture (ecriture_id, compte_id, sens, montant, ordre)
