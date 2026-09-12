@@ -179,6 +179,7 @@ function deconnecter() {
    son absence dit simplement que ce n'est pas votre rôle. */
 function ongletsVisibles() {
   const onglets = [];
+  const bureau = aRole('TRESORIER') || aRole('PRESIDENT') || aRole('COMMISSAIRE');
 
   if (aRole('TRESORIER')) {
     onglets.push({ cle: 'saisie',  nom: 'Saisir' });
@@ -187,10 +188,24 @@ function ongletsVisibles() {
 
   onglets.push({ cle: 'accueil', nom: 'Situation' });
   onglets.push({ cle: 'membres', nom: 'Membres' });
-  onglets.push({ cle: 'tours',   nom: 'Tours' });
 
-  if (aRole('TRESORIER') || aRole('PRESIDENT') || aRole('COMMISSAIRE')) {
-    onglets.push({ cle: 'journal', nom: 'Opérations' });
+  // LES ONGLETS SUIVENT LE MÉCANISME DU GROUPE. Un tour de rôle n'existe qu'en
+  // ROSCA, un prêt qu'en ASCA, une aide qu'en MUTUELLE — la base le refuserait
+  // autrement (décision 0002). Afficher un onglet « Prêts » à une tontine
+  // rotative promettrait une fonction qui n'existe pas pour elle.
+  if (session.groupe.type === 'ROSCA') {
+    onglets.push({ cle: 'tours', nom: 'Tours' });
+  }
+  if (session.groupe.type === 'ASCA') {
+    onglets.push({ cle: 'prets', nom: 'Prêts' });
+  }
+  if (session.groupe.type === 'MUTUELLE') {
+    onglets.push({ cle: 'aides', nom: 'Aides' });
+  }
+
+  if (bureau) {
+    onglets.push({ cle: 'anomalies', nom: 'À vérifier' });
+    onglets.push({ cle: 'journal',   nom: 'Opérations' });
   }
 
   return onglets;
@@ -210,12 +225,15 @@ function dessinerOnglets() {
 }
 
 const ECRANS = {
-  accueil: ecranAccueil,
-  saisie:  ecranSaisie,
-  impayes: ecranImpayes,
-  membres: ecranMembres,
-  tours:   ecranTours,
-  journal: ecranJournal,
+  accueil:   ecranAccueil,
+  saisie:    ecranSaisie,
+  impayes:   ecranImpayes,
+  membres:   ecranMembres,
+  tours:     ecranTours,
+  prets:     ecranPrets,
+  aides:     ecranAides,
+  anomalies: ecranAnomalies,
+  journal:   ecranJournal,
 };
 
 async function afficher(cle) {
@@ -621,6 +639,365 @@ async function ecranTours(contenu) {
       }
     });
   }
+}
+
+/* ---------------------------------------------------------------- prêts --- */
+
+/* Spécialisation ASCA. L'écran montre l'encours, l'échéancier et — pour le
+   président — les demandes en attente de décision. */
+
+async function ecranPrets(contenu) {
+  const prets = await appel('/prets');
+
+  const enAttente = prets.filter((p) => p.statut === 'DEMANDE');
+  const enCours = prets.filter((p) =>
+    ['EN_REMBOURSEMENT', 'EN_RETARD', 'REECHELONNE'].includes(p.statut));
+  const clos = prets.filter((p) => ['SOLDE', 'REFUSE'].includes(p.statut));
+
+  let html = '';
+
+  // L'avoir disponible commande ce que la caisse peut prêter (R-06). L'afficher
+  // avant les demandes évite d'approuver un prêt que la caisse ne peut honorer.
+  if (aRole('PRESIDENT') || aRole('TRESORIER') || aRole('COMMISSAIRE')) {
+    try {
+      const avoir = await appel('/prets/avoir-disponible');
+      html += `
+        <div class="grille">
+          <div class="chiffre">
+            <span class="valeur">${francs(avoir.avoir)}</span>
+            <span class="etiquette">que la caisse peut prêter</span>
+          </div>
+          <div class="chiffre">
+            <span class="valeur">${enCours.length}</span>
+            <span class="etiquette">prêt${enCours.length > 1 ? 's' : ''} en cours</span>
+          </div>
+        </div>`;
+    } catch {
+      // Habilitation insuffisante : l'écran reste utile sans ce bloc.
+    }
+  }
+
+  if (enAttente.length > 0) {
+    html += `<div class="carte"><h2>Demandes à étudier</h2>` +
+      enAttente.map((p) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">${txt(p.emprunteur)} — ${francs(p.montant_demande)}</span>
+            <span class="detail">${txt(p.motif_demande)}</span>
+          </div>
+          ${aRole('PRESIDENT')
+            ? `<button class="secondaire" data-approuver="${txt(p.id)}"
+                       data-montant="${txt(p.montant_demande)}"
+                       data-nom="${txt(p.emprunteur)}">Approuver</button>`
+            : `<span class="etat attente">en attente</span>`}
+        </div>`).join('') + `</div>`;
+  }
+
+  if (enCours.length > 0) {
+    html += `<div class="carte"><h2>Prêts en cours</h2>` +
+      enCours.map((p) => {
+        const retard = Number(p.echeances_en_retard) > 0;
+        return `
+          <div class="ligne">
+            <div>
+              <span class="intitule">${txt(p.emprunteur)}</span>
+              <span class="detail">
+                Reste à rembourser ${francs(p.capital_restant_du)}
+                sur ${francs(p.montant_accorde)}
+              </span>
+            </div>
+            ${retard
+              ? `<span class="etat refus">${txt(p.echeances_en_retard)} en retard</span>`
+              : `<span class="etat regle">à jour</span>`}
+          </div>`;
+      }).join('') + `</div>`;
+  }
+
+  if (clos.length > 0) {
+    html += `<div class="carte"><h2>Prêts clos</h2>` +
+      clos.map((p) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">${txt(p.emprunteur)}</span>
+            <span class="detail">
+              ${p.statut === 'SOLDE'
+                ? 'Remboursé intégralement'
+                : 'Refusé — ' + txt(p.motif_decision || '')}
+            </span>
+          </div>
+          <span class="etat ${p.statut === 'SOLDE' ? 'regle' : 'refus'}">
+            ${p.statut === 'SOLDE' ? 'soldé' : 'refusé'}
+          </span>
+        </div>`).join('') + `</div>`;
+  }
+
+  if (prets.length === 0) {
+    html = `<div class="carte"><div class="vide">
+              <p><strong>Aucun prêt.</strong></p>
+              <p class="discret">La caisse n'a encore consenti aucun prêt.</p>
+            </div></div>`;
+  }
+
+  contenu.innerHTML = html;
+
+  contenu.querySelectorAll('[data-approuver]').forEach((bouton) => {
+    bouton.addEventListener('click', async () => {
+      const montant = prompt(
+        `Montant à accorder à ${bouton.dataset.nom} ?`,
+        bouton.dataset.montant,
+      );
+      if (montant === null) return;
+
+      bouton.disabled = true;
+      try {
+        const r = await appel('/prets/' + bouton.dataset.approuver + '/approbation', {
+          method: 'POST',
+          body: JSON.stringify({ montant: Number(montant) }),
+        });
+        message(
+          `${francs(r.montant_accorde)} accordés — ${r.echeances} échéances.`,
+          'succes',
+        );
+        afficher('prets');
+      } catch (err) {
+        message(err.message, 'echec');
+        bouton.disabled = false;
+      }
+    });
+  });
+}
+
+/* ---------------------------------------------------------------- aides --- */
+
+/* Spécialisation MUTUELLE. Une aide n'ouvre AUCUNE créance : le vocabulaire de
+   l'écran ne doit jamais laisser croire qu'elle sera remboursée. */
+
+async function ecranAides(contenu) {
+  const aides = await appel('/aides');
+
+  const aDecider = aides.filter((a) => a.statut === 'DEMANDEE');
+  const aVerser  = aides.filter((a) => a.statut === 'APPROUVEE');
+  const closes   = aides.filter((a) => ['VERSEE', 'REFUSEE'].includes(a.statut));
+
+  let html = '';
+
+  if (aDecider.length > 0) {
+    html += `<div class="carte"><h2>Demandes à étudier</h2>` +
+      aDecider.map((a) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">${txt(a.beneficiaire)} — ${francs(a.montant_demande)}</span>
+            <span class="detail">${txt(a.motif)}</span>
+          </div>
+          ${aRole('PRESIDENT')
+            ? `<button class="secondaire" data-approuver-aide="${txt(a.id)}"
+                       data-montant="${txt(a.montant_demande)}"
+                       data-nom="${txt(a.beneficiaire)}">Décider</button>`
+            : `<span class="etat attente">en attente</span>`}
+        </div>`).join('') + `</div>`;
+  }
+
+  if (aVerser.length > 0) {
+    html += `<div class="carte"><h2>Aides accordées, à remettre</h2>` +
+      aVerser.map((a) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">${txt(a.beneficiaire)} — ${francs(a.montant_accorde)}</span>
+            <span class="detail">${txt(a.motif)}</span>
+          </div>
+          ${aRole('TRESORIER')
+            ? `<button class="secondaire" data-verser="${txt(a.id)}"
+                       data-nom="${txt(a.beneficiaire)}"
+                       data-montant="${txt(a.montant_accorde)}">Remettre</button>`
+            : `<span class="etat attente">à remettre</span>`}
+        </div>`).join('') + `</div>`;
+  }
+
+  if (closes.length > 0) {
+    html += `<div class="carte"><h2>Aides passées</h2>` +
+      closes.map((a) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">${txt(a.beneficiaire)}</span>
+            <span class="detail">
+              ${txt(a.motif)}${a.date_versement ? ' · remise le ' + date(a.date_versement) : ''}
+            </span>
+          </div>
+          ${a.statut === 'VERSEE'
+            ? `<span class="montant">${francs(a.montant_accorde)}</span>`
+            : `<span class="etat refus">refusée</span>`}
+        </div>`).join('') + `</div>`;
+  }
+
+  if (aides.length === 0) {
+    html = `<div class="carte"><div class="vide">
+              <p><strong>Aucune demande d'aide.</strong></p>
+              <p class="discret">Le fonds n'a encore été sollicité par personne.</p>
+            </div></div>`;
+  }
+
+  contenu.innerHTML = html;
+
+  contenu.querySelectorAll('[data-approuver-aide]').forEach((bouton) => {
+    bouton.addEventListener('click', async () => {
+      // Le montant accordé peut être INFÉRIEUR au montant demandé : le groupe
+      // arbitre selon l'état du fonds. C'est une décision, pas un droit.
+      const montant = prompt(
+        `Montant accordé à ${bouton.dataset.nom} ?`,
+        bouton.dataset.montant,
+      );
+      if (montant === null) return;
+
+      bouton.disabled = true;
+      try {
+        await appel('/aides/' + bouton.dataset.approuverAide + '/approbation', {
+          method: 'POST',
+          body: JSON.stringify({ montant: Number(montant) }),
+        });
+        message('Aide accordée. Elle reste à remettre au bénéficiaire.', 'succes');
+        afficher('aides');
+      } catch (err) {
+        message(err.message, 'echec');
+        bouton.disabled = false;
+      }
+    });
+  });
+
+  contenu.querySelectorAll('[data-verser]').forEach((bouton) => {
+    bouton.addEventListener('click', async () => {
+      bouton.disabled = true;
+      try {
+        const r = await appel('/aides/' + bouton.dataset.verser + '/versement', {
+          method: 'POST',
+        });
+        message(`${francs(r.montant_verse)} remis à ${r.beneficiaire}.`, 'succes');
+        afficher('aides');
+      } catch (err) {
+        message(err.message, 'echec');
+        bouton.disabled = false;
+      }
+    });
+  });
+}
+
+/* ------------------------------------------------------------ anomalies --- */
+
+/* L'ÉCRAN S'APPELLE « À VÉRIFIER », PAS « ANOMALIES » — encore moins
+   « ALERTES ». Une tontine repose sur la confiance ; un outil qui désignerait
+   un coupable détruirait ce qu'il prétend protéger. Chaque libellé décrit un
+   constat, jamais une intention. */
+
+async function ecranAnomalies(contenu) {
+  const ouvertes = await appel('/anomalies');
+
+  const critiques = ouvertes.filter((a) => a.gravite === 'CRITIQUE');
+  const autres    = ouvertes.filter((a) => a.gravite !== 'CRITIQUE');
+
+  let html = `
+    <div class="carte">
+      <h2>À vérifier</h2>
+      <p class="discret">
+        Des écarts constatés automatiquement. Chacun peut avoir une explication
+        simple — un versement saisi en retard, une dispense accordée.
+      </p>
+      <button class="secondaire" id="balayer">Relancer la vérification</button>
+    </div>`;
+
+  const carte = (a) => `
+    <div class="ligne">
+      <div>
+        <span class="intitule">${txt(a.description)}</span>
+        <span class="detail">Constaté le ${date(a.detectee_le)}</span>
+      </div>
+      <button class="secondaire" data-lever="${txt(a.id)}">Justifier</button>
+    </div>`;
+
+  if (critiques.length > 0) {
+    html += `<div class="carte">
+               <h2>À vérifier en priorité</h2>
+               ${critiques.map(carte).join('')}
+             </div>`;
+  }
+
+  if (autres.length > 0) {
+    html += `<div class="carte"><h2>À examiner</h2>${autres.map(carte).join('')}</div>`;
+  }
+
+  if (ouvertes.length === 0) {
+    html += `<div class="carte"><div class="vide">
+               <p><strong>Rien à vérifier.</strong></p>
+               <p class="discret">Les comptes du groupe sont cohérents.</p>
+             </div></div>`;
+  }
+
+  // Les anomalies levées restent consultables : la levée fait partie de la
+  // piste d'audit, elle n'efface rien.
+  const levees = await appel('/anomalies/levees');
+  if (levees.length > 0) {
+    html += `<div class="carte">
+      <h2>Déjà justifiées</h2>
+      <p class="discret">
+        Ces écarts ont été expliqués. Ils restent au dossier : savoir qu'un
+        écart a été constaté puis justifié vaut souvent plus que l'écart.
+      </p>` +
+      levees.map((a) => `
+        <div class="ligne">
+          <div>
+            <span class="intitule">${txt(a.description)}</span>
+            <span class="detail">
+              ${txt(a.motif_levee)} — ${txt(a.levee_par || '')}, le ${date(a.levee_le)}
+            </span>
+          </div>
+        </div>`).join('') + `</div>`;
+  }
+
+  contenu.innerHTML = html;
+
+  document.getElementById('balayer').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Vérification…';
+    try {
+      const r = await appel('/anomalies/balayage', { method: 'POST' });
+      const total = Object.values(r).reduce((s, n) => s + Number(n), 0);
+      message(
+        total === 0
+          ? 'Vérification terminée : rien à signaler.'
+          : `Vérification terminée : ${total} point${total > 1 ? 's' : ''} à examiner.`,
+        'succes',
+      );
+      afficher('anomalies');
+    } catch (err) {
+      message(err.message, 'echec');
+      e.target.disabled = false;
+      e.target.textContent = 'Relancer la vérification';
+    }
+  });
+
+  contenu.querySelectorAll('[data-lever]').forEach((bouton) => {
+    bouton.addEventListener('click', async () => {
+      // Le motif est obligatoire et restera au dossier (F-ANO-08). L'invite le
+      // dit, pour qu'on ne découvre pas après coup que « vu » était insuffisant.
+      const motif = prompt(
+        'Pourquoi cet écart s\'explique-t-il ?\n\n' +
+        'Votre explication restera au dossier et doit rester compréhensible ' +
+        'dans plusieurs mois (20 caractères au moins).',
+      );
+      if (motif === null) return;
+
+      bouton.disabled = true;
+      try {
+        await appel('/anomalies/' + bouton.dataset.lever + '/levee', {
+          method: 'POST',
+          body: JSON.stringify({ motif }),
+        });
+        message('Écart justifié. Il reste consultable au dossier.', 'succes');
+        afficher('anomalies');
+      } catch (err) {
+        message(err.message, 'echec');
+        bouton.disabled = false;
+      }
+    });
+  });
 }
 
 /* -------------------------------------------------------------- journal --- */
