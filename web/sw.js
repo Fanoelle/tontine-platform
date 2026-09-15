@@ -26,13 +26,33 @@
 // l'ancienne coquille : `activate` supprime tout cache dont le nom diffère.
 // Sans cela, un utilisateur garderait indéfiniment la version qu'il a d'abord
 // chargée — le défaut classique d'un Service Worker mal repris.
-const VERSION = 'tontine-v1';
+const VERSION = 'tontine-v2';
 
+/* LES MODULES D'ÉCRAN SONT DANS LA COQUILLE, ET C'EST LE POINT DÉLICAT DU
+   DÉCOUPAGE.
+
+   Depuis que les écrans lourds ou exclusifs sont chargés à la demande, un
+   trésorier hors ligne qui ouvre un onglet jamais visité déclencherait un
+   `import()` vers un fichier absent du cache — et verrait un écran d'erreur
+   là où, avant le découpage, tout était déjà là.
+
+   On les met donc TOUS en cache à l'installation. Le gain du découpage n'en
+   est pas perdu : il porte sur ce que le NAVIGATEUR PARSE ET EXÉCUTE au
+   premier affichage, pas sur ce que le Service Worker archive en arrière-plan
+   pour plus tard. Le premier coûte à chaque visite ; le second une fois.
+
+   Conséquence assumée : ajouter un module d'écran sans l'inscrire ici le rend
+   indisponible hors ligne. `scripts/verifier-modules.py` le détecte. */
 const COQUILLE = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
+  '/ecran-import.js',
+  '/ecrans-rosca.js',
+  '/ecrans-asca.js',
+  '/ecrans-mutuelle.js',
+  '/ecrans-bureau.js',
 ];
 
 self.addEventListener('install', (evenement) => {

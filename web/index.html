@@ -11,12 +11,16 @@
 
   N-USG-02 impose moins de 100 ko par écran utile, sur connexion lente. Un
   bundle React minimal dépasse 140 ko avant la première ligne de code métier.
-  Ici, page + style + script tiennent largement sous la barre, sans étape de
-  construction et sans dépendance : le fichier servi est le fichier écrit.
+  Ici, aucune dépendance, et le code est découpé en modules ES chargés à la
+  demande : ce que télécharge un utilisateur donné dépend de son rôle et du
+  mécanisme de son groupe, pas de la taille du projet.
 
-  Le corollaire assumé : pas de composants, pas de JSX. L'application reste
-  petite — onze écrans — et le rendu se fait par fonctions qui produisent du
-  HTML. Au-delà d'une vingtaine d'écrans, l'arbitrage mériterait d'être revu.
+  La seule étape de construction retire les commentaires du code servi
+  (scripts/construire-web.py). Elle ne transforme rien d'autre : le fichier
+  servi reste lisible et déboguable dans le navigateur.
+
+  Le corollaire assumé : pas de composants, pas de JSX. Le rendu se fait par
+  fonctions qui produisent du HTML.
 
   `color-scheme` annonce au navigateur que les deux thèmes sont gérés : les
   contrôles natifs (champs de date, listes déroulantes) s'accordent alors au
@@ -125,6 +129,13 @@
   <div id="message" class="message" role="status" hidden></div>
 </div>
 
-<script src="/app.js"></script>
+<!-- MODULE ES, et non script classique. C'est ce qui permet à app.js de
+     charger un écran à la demande : la reprise de cahier (11,5 ko) ne part
+     que si on ouvre son onglet, et les écrans d'un mécanisme ne partent pas
+     pour un groupe d'un autre. Voir scripts/poids-interface.py pour ce que
+     chaque profil télécharge réellement.
+
+     `type="module"` implique `defer` : inutile de le préciser. -->
+<script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -266,6 +266,25 @@ async function principal() {
       return r.result.value;
     };
 
+    // ON CLIQUE SUR L'ONGLET, comme un utilisateur. Appeler `afficher()`
+    // depuis la console ne marche plus depuis le passage en modules ES — et
+    // c'était de toute façon un raccourci : ce qui doit fonctionner, c'est le
+    // chemin que prend une vraie personne.
+    const ouvrirOnglet = async (libelle) => {
+      const trouve = await evaluer(`
+        (() => {
+          const LIBELLE = ${JSON.stringify(libelle)};
+          const b = [...document.querySelectorAll('#onglets button')]
+            .find((x) => x.textContent.trim() === LIBELLE);
+          if (!b) return false;
+          b.click();
+          return true;
+        })()
+      `);
+      await attendre(2500);
+      return trouve;
+    };
+
     console.log('\n--- 1. Chargement en ligne et connexion ---');
     await ws.commande('Page.navigate', { url: BASE + '/' });
     await attendre(3000);
@@ -319,6 +338,33 @@ async function principal() {
       navigator.serviceWorker.getRegistration('/').then(r => !!(r && r.active))
     `);
     verifier('le Service Worker est actif', swActif);
+
+    console.log('\n--- 1 bis. Le découpage est-il effectif ? ---');
+
+    // LA VÉRIFICATION QUI JUSTIFIE TOUT LE DÉCOUPAGE. Un registre d'écrans
+    // différés ne sert à rien si le navigateur les télécharge quand même au
+    // démarrage. On lit les ressources réellement demandées : celles d'un
+    // mécanisme étranger au groupe ne doivent PAS y figurer.
+    //
+    // La trésorière de démonstration préside une ROSCA : elle doit avoir
+    // ecrans-rosca.js (l'onglet « Tours » est visible) et jamais
+    // ecrans-asca.js ni ecrans-mutuelle.js.
+    const charges = await evaluer(`
+      performance.getEntriesByType('resource')
+        .map((r) => r.name.split('/').pop())
+        .filter((n) => n.endsWith('.js'))
+    `);
+
+    verifier(
+      'les écrans d\'un AUTRE mécanisme ne sont pas téléchargés',
+      !charges.includes('ecrans-asca.js') && !charges.includes('ecrans-mutuelle.js'),
+      charges.join(' '),
+    );
+
+    verifier(
+      'la reprise de cahier n\'est pas téléchargée sans être ouverte',
+      !charges.includes('ecran-import.js'),
+    );
 
     console.log('\n--- 2. Coupure du réseau ---');
     await ws.commande('Network.emulateNetworkConditions', {
@@ -374,14 +420,29 @@ async function principal() {
     );
 
     console.log('\n--- 3. La saisie est refusée hors ligne ---');
+
+    // PAR L'INTERFACE, ET NON EN APPELANT `appel()` DEPUIS LA CONSOLE.
+    // Une version précédente le faisait — elle a cessé de fonctionner au
+    // passage en modules ES, qui n'exposent plus rien globalement. C'était en
+    // réalité une faiblesse du test : il vérifiait une fonction interne, là où
+    // ce qui compte est ce que voit le trésorier en cliquant.
+    await ouvrirOnglet('Saisir');
+
     const refus = await evaluer(`
-      appel('/cotisations/versement', {
-        method: 'POST',
-        body: JSON.stringify({ echeance_id: '00000000-0000-0000-0000-000000000000', montant: 1000 })
-      }).then(() => 'ACCEPTÉ — ANOMALIE').catch(e => e.message)
+      (async () => {
+        const bouton = document.getElementById('valider');
+        if (!bouton) return "L'écran de saisie ne s'est pas affiché";
+        const montant = document.getElementById('montant');
+        if (montant) montant.value = '1000';
+        bouton.click();
+        await new Promise((r) => setTimeout(r, 1500));
+        const boite = document.getElementById('message');
+        return boite && !boite.hidden ? boite.textContent : '(aucun message)';
+      })()
     `);
+
     verifier(
-      'un versement hors ligne est refusé',
+      'un versement hors ligne est refusé, avec un message clair',
       refus.includes('Pas de réseau') && refus.includes('compter double'),
       refus.slice(0, 80),
     );
@@ -405,7 +466,9 @@ async function principal() {
     const avantDeco = await evaluer(`
       Object.keys(localStorage).filter(c => c.startsWith('tontine.cache.')).length
     `);
-    await evaluer('deconnecter()');
+    // Par le bouton « Quitter », comme un utilisateur — `deconnecter()` n'est
+    // plus une fonction globale depuis le passage en modules ES.
+    await evaluer('document.getElementById("deconnexion").click()');
     await attendre(1000);
     const apresDeco = await evaluer(`
       Object.keys(localStorage).filter(c => c.startsWith('tontine.cache.')).length

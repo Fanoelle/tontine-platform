@@ -383,7 +383,7 @@ courant tromperait là où un écran vide fait comprendre qu'il faut du réseau.
 Pour l'éprouver :
 
 ```bash
-node scripts/essai-hors-ligne.js     # 13 vérifications dans Chromium
+node scripts/essai-hors-ligne.js     # 15 vérifications dans Chromium
 ```
 
 ---
@@ -470,9 +470,14 @@ parce que le code du client se lisait comme correct sans l'être — voir
 [Consultation hors ligne](#consultation-hors-ligne) :
 
 ```bash
-node scripts/essai-hors-ligne.js   # 13 vérifications — cache, bandeau, refus de saisie
+node scripts/essai-hors-ligne.js   # 15 vérifications — découpage, cache, refus de saisie
 node scripts/essai-import.js       # 12 vérifications — aperçu, validation, onglets
 ```
+
+Ils passent par l'interface réelle — clics sur les onglets, sur les boutons —
+et non par les fonctions internes : depuis le découpage en modules ES, rien
+n'est exposé globalement, ce qui a rendu ces essais plus fidèles qu'ils ne
+l'étaient.
 
 > **Les tests consomment le jeu de démonstration** : ils encaissent le tour 3,
 > remettent la cagnotte, octroient des prêts. Sans `reinitialiser` préalable,
@@ -597,7 +602,7 @@ SELECT rubrique, intitule, valeur
 
 ```
 ┌──────────────────┐     HTTPS      ┌──────────────────┐
-│  Web — 4 fichiers│ ─────────────► │   API (NestJS)   │
+│  Web — modules ES│ ─────────────► │   API (NestJS)   │
 │  sans dépendance │ ◄───────────── │   TypeScript     │
 └──────────────────┘   JSON, JWT    └────────┬─────────┘
                                              │ pg (SQL brut)
@@ -832,16 +837,41 @@ elle — et que la base refuserait.
 
 **Ni React, ni dépendance.** N-USG-02 impose moins de 100 ko par écran utile :
 un bundle React minimal dépasse 140 ko avant la première ligne de code métier.
-Ici l'ensemble pèse **86 ko**, soit 14 ko de marge. Corollaire assumé : pas de
-composants, pas de JSX. Au-delà d'une vingtaine d'écrans, l'arbitrage
-mériterait d'être revu — et la marge restante dit qu'on s'en approche.
+
+**Le code est découpé en modules ES chargés à la demande**, et ce qui compte
+n'est plus le total mais ce qu'un utilisateur donné télécharge vraiment :
+
+| Profil | Chargé | Marge |
+|---|---|---|
+| Membre — ROSCA | 67,0 ko | +33,0 ko |
+| Trésorière — ROSCA | 73,2 ko | +26,8 ko |
+| Président — groupe neuf | 80,5 ko | +19,5 ko |
+
+Un groupe ROSCA ne télécharge jamais les écrans de prêts ni d'aides — son type
+est arrêté à sa création et la base refuserait ces objets. Un simple membre ne
+charge ni les anomalies ni le rapprochement Mobile Money : dans un groupe de
+douze, onze personnes sont dans ce cas. La reprise de cahier (9 ko) ne part que
+pour un président dont le groupe n'a pas encore de cycle.
+
+```bash
+python3 scripts/poids-interface.py     # ce que chaque profil télécharge
+python3 scripts/verifier-modules.py    # cohérence du découpage
+```
+
+Le second script vérifie qu'un module différé existe, qu'il est dans la
+COQUILLE du Service Worker (sans quoi l'écran marcherait en ligne et
+casserait hors ligne), qu'il exporte bien la fonction que le registre nomme,
+et que sa syntaxe est valide.
 
 La seule étape de construction retire les commentaires du code servi
-(`scripts/construire-web.py` : 116 ko de source → 86 ko dans `web-servi/`). Ces
-commentaires expliquent pourquoi le bouton de remise est absent plutôt que
-grisé ; les garder dans la source et les retirer du fichier servi évite d'avoir
-à choisir. L'API sert `web-servi/` s'il existe, `web/` sinon — un dépôt
-fraîchement cloné fonctionne sans rien construire.
+(`scripts/construire-web.py`). Ces commentaires expliquent pourquoi le bouton
+de remise est absent plutôt que grisé ; les garder dans la source et les
+retirer du fichier servi évite d'avoir à choisir. L'API sert `web-servi/` s'il
+existe, `web/` sinon — un dépôt fraîchement cloné fonctionne sans rien
+construire.
+
+Corollaire assumé : pas de composants, pas de JSX. Le rendu se fait par
+fonctions qui produisent du HTML.
 
 Le vocabulaire est tenu sans exception (N-USG-05) : on *annule* un versement, on
 ne passe pas d'écriture inverse ; on lit « il reste 15 000 F à verser », pas
@@ -904,11 +934,16 @@ tontine-platform/
 │   │   └── 019       Reprise d'un cahier existant
 │   ├── seeds/        4 fichiers — un groupe par mécanisme, dates relatives
 │   └── recette/      3 scénarios d'acceptation, un par jalon
-├── web/              Interface — 4 fichiers, 86 ko servis, aucune dépendance
+├── web/              Interface — modules ES, aucune dépendance
 │   ├── index.html    Structure des écrans
 │   ├── style.css     Téléphone d'abord, polices système
-│   ├── app.js        Session, appels API, rendu des 13 écrans
-│   └── sw.js         Service Worker — ouvre l'application sans réseau
+│   ├── app.js        Noyau : session, navigation, hors-ligne, écrans communs
+│   ├── sw.js         Service Worker — ouvre l'application sans réseau
+│   ├── ecrans-rosca.js     Tour de rôle        ┐ un seul des trois est
+│   ├── ecrans-asca.js      Prêts               │ chargé : le type du
+│   ├── ecrans-mutuelle.js  Aides               ┘ groupe est définitif
+│   ├── ecrans-bureau.js    Anomalies, Mobile Money — jamais pour un membre
+│   └── ecran-import.js     Reprise de cahier — une fois par groupe
 ├── docs/
 │   ├── cahier-des-charges.md     Exigences codées (F-COT-02, R-01…)
 │   ├── conception-interface.md   Écrans, enchaînement, vocabulaire
@@ -920,6 +955,8 @@ tontine-platform/
 └── scripts/
     ├── db.sh              Pilotage de la base de développement
     ├── construire-web.py  Retire les commentaires du code servi
+    ├── poids-interface.py Ce que chaque profil télécharge (N-USG-02)
+    ├── verifier-modules.py Cohérence du découpage en modules
     ├── generer-uml.sh     Rend les diagrammes PlantUML en images
     ├── essai-hors-ligne.js  Éprouve le hors-ligne dans Chromium
     ├── essai-import.js      Éprouve la reprise de cahier dans Chromium
@@ -1100,7 +1137,7 @@ documents en un seul fichier de 49 pages — page de garde, sommaire, et les
 | Rapports | ✅ Assemblée, exports CSV, rapprochement Mobile Money |
 | Notifications | ⚠️ File et règles éprouvées — **envoi réel non implémenté** |
 | API | ✅ 52 routes, 151 tests d'intégration |
-| Interface | ✅ 13 écrans, 86 ko servis, hors ligne, sans dépendance |
+| Interface | ✅ 13 écrans en modules ES, 67 ko pour un membre, hors ligne |
 
 **Critère d'acceptation du jalon 1**, vérifié par `./scripts/db.sh recette` :
 une tontine de 12 membres mène un cycle complet, la caisse reste équilibrée à

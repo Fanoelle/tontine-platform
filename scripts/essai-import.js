@@ -221,6 +221,26 @@ async function principal() {
       return r.result.value;
     };
 
+    // ON CLIQUE SUR L'ONGLET, comme un utilisateur. Appeler `afficher()`
+    // depuis la console ne marche plus depuis le passage en modules ES — et
+    // c'était de toute façon un raccourci : ce qui doit fonctionner, c'est le
+    // chemin que prend une vraie personne, y compris le téléchargement du
+    // module de l'écran.
+    const ouvrirOnglet = async (libelle) => {
+      const trouve = await evaluer(`
+        (() => {
+          const LIBELLE = ${JSON.stringify(libelle)};
+          const b = [...document.querySelectorAll('#onglets button')]
+            .find((x) => x.textContent.trim() === LIBELLE);
+          if (!b) return false;
+          b.click();
+          return true;
+        })()
+      `);
+      await attendre(2500);
+      return trouve;
+    };
+
     console.log('\n--- Connexion au groupe NEUF ---');
     await ws.commande('Page.navigate', { url: BASE + '/' });
     await attendre(3000);
@@ -238,8 +258,7 @@ async function principal() {
     verifier("l'onglet d'import est proposé à un groupe neuf", onglets.includes('Reprendre un cahier'), onglets.join(' | '));
 
     console.log('\n--- Écran d\'import ---');
-    await evaluer(`afficher('import')`);
-    await attendre(1500);
+    await ouvrirOnglet('Reprendre un cahier');
 
     const texteEcran = await evaluer('document.getElementById("contenu").textContent');
     verifier("l'écran s'affiche", texteEcran.includes('Reprendre un cahier existant'));
@@ -266,7 +285,7 @@ async function principal() {
     verifier("l'aperçu montre le montant total", /60[\s\u00a0]?000/.test(apercu));
 
     const cyclesAvant = await evaluer(`
-      fetch('/api/tours', { headers: { Authorization: 'Bearer ' + session.jeton } })
+      fetch('/api/tours', { headers: { Authorization: 'Bearer ' + JSON.parse(sessionStorage.getItem('tontine')).jeton } })
         .then(r => r.json()).then(t => Array.isArray(t) ? t.length : -1)
     `);
     verifier("l'aperçu N'A RIEN ÉCRIT", cyclesAvant === 0, cyclesAvant + ' tour(s)');
@@ -286,7 +305,7 @@ async function principal() {
     verifier("l'onglet d'import disparaît après reprise", !apresOnglets.includes('Reprendre un cahier'));
 
     const tours = await evaluer(`
-      fetch('/api/tours', { headers: { Authorization: 'Bearer ' + session.jeton } })
+      fetch('/api/tours', { headers: { Authorization: 'Bearer ' + JSON.parse(sessionStorage.getItem('tontine')).jeton } })
         .then(r => r.json()).then(t => t.length)
     `);
     verifier('trois tours ont été créés', tours === 3, tours + ' tour(s)');

@@ -20,7 +20,7 @@ const API = '/api';
    page — fréquent sur un téléphone qui bascule d'application. sessionStorage
    et non localStorage : la session s'efface à la fermeture de l'onglet, ce qui
    convient à un appareil parfois partagé au sein du groupe. */
-let session = {
+export let session = {
   jeton: null,
   membre: null,
   groupe: null,
@@ -59,7 +59,7 @@ window.addEventListener('online', () => {
     saisie humaine. Un nom de membre contenant « <script> » ne doit pas
     s'exécuter. C'est la seule défense nécessaire ici, et elle doit être
     appliquée sans exception. */
-function txt(valeur) {
+export function txt(valeur) {
   if (valeur === null || valeur === undefined) return '';
   return String(valeur)
     .replace(/&/g, '&amp;')
@@ -74,12 +74,12 @@ function txt(valeur) {
     les montants sont des entiers exacts, jamais des flottants.
     Espace insécable comme séparateur, et aucune décimale : le franc CFA n'a
     pas de sous-unité en pratique. */
-function francs(valeur) {
+export function francs(valeur) {
   const n = Number(valeur ?? 0);
   return n.toLocaleString('fr-FR').replace(/ |\s/g, ' ') + ' F';
 }
 
-function date(valeur) {
+export function date(valeur) {
   if (!valeur) return '';
   const d = new Date(valeur);
   if (Number.isNaN(d.getTime())) return String(valeur);
@@ -88,18 +88,18 @@ function date(valeur) {
   });
 }
 
-function dateCourte(valeur) {
+export function dateCourte(valeur) {
   if (!valeur) return '';
   const d = new Date(valeur);
   if (Number.isNaN(d.getTime())) return String(valeur);
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
-function aujourdhui() {
+export function aujourdhui() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function message(texte, genre = '') {
+export function message(texte, genre = '') {
   const boite = document.getElementById('message');
   boite.textContent = texte;
   boite.className = 'message ' + genre;
@@ -214,7 +214,7 @@ function signalerHorsLigne(entree) {
 
     LES LECTURES SONT ARCHIVÉES ET SERVIES HORS LIGNE ; les écritures sont
     refusées. Voir le commentaire ci-dessus pour le pourquoi. */
-async function appel(chemin, options = {}) {
+export async function appel(chemin, options = {}) {
   const methode = (options.method || 'GET').toUpperCase();
   const lecture = methode === 'GET';
 
@@ -274,7 +274,7 @@ async function appel(chemin, options = {}) {
   return corps;
 }
 
-function aRole(role) {
+export function aRole(role) {
   return session.membre && session.membre.roles.includes(role);
 }
 
@@ -418,21 +418,77 @@ function dessinerOnglets() {
   });
 }
 
+/* CHARGEMENT À LA DEMANDE.
+
+   Un écran déclaré par une FONCTION est dans ce fichier. Un écran déclaré par
+   un CHEMIN vit dans son propre module, téléchargé la première fois qu'on
+   l'ouvre — et jamais si on ne l'ouvre pas.
+
+   POURQUOI SEULEMENT CERTAINS. Découper a un coût : une requête de plus sur
+   une connexion lente, précisément celle des utilisateurs visés. Ne sont donc
+   différés que les écrans dont le poids est réel ET l'usage rare ou exclusif :
+   la reprise de cahier, qu'un groupe fait une fois dans sa vie, et les écrans
+   propres à un mécanisme, qu'un groupe ROSCA ne verra jamais pour l'ASCA. Les
+   écrans du quotidien — saisie, situation, membres — restent dans le noyau. */
 const ECRANS = {
   accueil:   ecranAccueil,
   saisie:    ecranSaisie,
   impayes:   ecranImpayes,
   membres:   ecranMembres,
-  tours:     ecranTours,
-  prets:     ecranPrets,
-  aides:     ecranAides,
-  anomalies: ecranAnomalies,
+  tours:         ['./ecrans-rosca.js',    'ecranTours'],
+  prets:         ['./ecrans-asca.js',     'ecranPrets'],
+  aides:         ['./ecrans-mutuelle.js', 'ecranAides'],
+  anomalies:     ['./ecrans-bureau.js',   'ecranAnomalies'],
   journal:   ecranJournal,
   rapport:       ecranRapport,
-  rapprochement: ecranRapprochement,
+  rapprochement: ['./ecrans-bureau.js',   'ecranRapprochement'],
   historique:    ecranHistorique,
-  import:        ecranImport,
+  import:        ['./ecran-import.js',    'ecranImport'],
 };
+
+/* Modules déjà téléchargés. Sans ce cache, rouvrir un onglet relancerait un
+   `import()` — le navigateur servirait depuis SON cache, mais on paierait
+   quand même l'aller-retour quand il a expiré. */
+const modulesCharges = new Map();
+
+/* Résout une entrée d'ECRANS en fonction de rendu, en téléchargeant le module
+   s'il le faut.
+
+   L'ÉCHEC EST TRADUIT ICI, et c'est le point délicat du découpage. Un
+   `import()` qui échoue lève « Failed to fetch dynamically imported module » —
+   un message que personne ne peut interpréter, et qui arrive précisément
+   quand le réseau manque. On le remplace par une phrase qui dit quoi faire. */
+async function rendu(cle) {
+  const entree = ECRANS[cle];
+  if (typeof entree === 'function') return entree;
+
+  const [chemin, nomExport] = entree;
+
+  if (!modulesCharges.has(chemin)) {
+    try {
+      modulesCharges.set(chemin, await import(chemin));
+    } catch (err) {
+      // L'ÉCHEC EST TRADUIT ICI. Un `import()` qui échoue lève « Failed to
+      // fetch dynamically imported module » — un message que personne ne peut
+      // interpréter, et qui arrive précisément quand le réseau manque.
+      throw new Error(
+        "Cet écran n'a pas pu être téléchargé. Il n'est pas encore disponible "
+        + 'hors ligne : ouvrez-le une fois connecté.',
+      );
+    }
+  }
+
+  // L'EXPORT EST NOMMÉ, JAMAIS DEVINÉ. Une première version prenait « la
+  // première fonction exportée » : deux écrans partageant un module —
+  // anomalies et rapprochement Mobile Money vivent tous deux dans
+  // ecrans-bureau.js — auraient alors affiché le même, sans erreur.
+  const fonction = modulesCharges.get(chemin)[nomExport];
+  if (typeof fonction !== 'function') {
+    throw new Error(`${chemin} n'exporte pas ${nomExport}.`);
+  }
+
+  return fonction;
+}
 
 /* Écrans qui produisent un DOCUMENT — ceux qu'on lit en assemblée ou qu'on
    classe. Imprimer l'écran de saisie n'aurait aucun sens, et un bouton qui
@@ -442,7 +498,7 @@ const ECRANS_IMPRIMABLES = [
   'tours', 'prets', 'aides', 'accueil', 'historique',
 ];
 
-async function afficher(cle) {
+export async function afficher(cle) {
   ongletCourant = cle;
   try { sessionStorage.setItem('ecran', cle); } catch { /* sans importance */ }
   dessinerOnglets();
@@ -451,7 +507,8 @@ async function afficher(cle) {
   contenu.innerHTML = '<p class="vide">Chargement…</p>';
 
   try {
-    await ECRANS[cle](contenu);
+    const dessiner = await rendu(cle);
+    await dessiner(contenu);
 
     if (ECRANS_IMPRIMABLES.includes(cle)) {
       const barre = document.createElement('div');
@@ -837,460 +894,6 @@ async function ecranMembres(contenu) {
     </div>`;
 }
 
-/* ---------------------------------------------------------------- tours --- */
-
-async function ecranTours(contenu) {
-  const tours = await appel('/tours');
-
-  const lignes = tours.map((t) => {
-    if (t.remis) {
-      return `
-        <div class="ligne">
-          <div>
-            <span class="intitule">Tour ${txt(t.rang)} — ${txt(t.beneficiaire)}</span>
-            <span class="detail">Remis le ${date(t.date_remise_reelle)}</span>
-          </div>
-          <span class="montant">${francs(t.montant_cagnotte)}</span>
-        </div>`;
-    }
-
-    const manque = Number(t.manque);
-    return `
-      <div class="ligne">
-        <div>
-          <span class="intitule">Tour ${txt(t.rang)} — ${txt(t.beneficiaire)}</span>
-          <span class="detail">
-            Prévu le ${dateCourte(t.date_remise_prevue)} ·
-            ${francs(t.cagnotte_encaissee)} collectés
-          </span>
-        </div>
-        ${manque > 0
-          ? `<span class="etat attente">${francs(manque)} manquants</span>`
-          : `<span class="etat regle">complète</span>`}
-      </div>`;
-  }).join('');
-
-  const courant = tours.find((t) => !t.remis);
-  let remise = '';
-
-  // Le bouton de remise n'apparaît QUE si la cagnotte est complète. Ni grisé,
-  // ni affichant une erreur au clic : absent, avec la raison en clair. C'est
-  // l'écran §6 de la conception.
-  if (courant && aRole('TRESORIER')) {
-    const manque = Number(courant.manque);
-
-    remise = manque > 0
-      ? `<div class="carte">
-           <h2>Remettre la cagnotte du tour ${txt(courant.rang)}</h2>
-           <p class="avertissement">
-             La remise est impossible tant que les cotisations ne sont pas
-             encaissées. Il manque ${francs(manque)}.
-           </p>
-         </div>`
-      : `<div class="carte">
-           <h2>Remettre la cagnotte du tour ${txt(courant.rang)}</h2>
-           <p>Bénéficiaire : <strong>${txt(courant.beneficiaire)}</strong></p>
-           <div class="ligne">
-             <span>Montant à remettre</span>
-             <span class="montant">${francs(courant.cagnotte_encaissee)}</span>
-           </div>
-           <button class="principal" id="remettre"
-                   data-tour="${txt(courant.tour_id)}">
-             Remettre ${francs(courant.cagnotte_encaissee)} à ${txt(courant.beneficiaire)}
-           </button>
-         </div>`;
-  }
-
-  contenu.innerHTML = `
-    ${remise}
-    <div class="carte">
-      <h2>Ordre de passage</h2>
-      <p class="discret">Fixé à l'avance par le groupe</p>
-      ${lignes}
-    </div>`;
-
-  const bouton = document.getElementById('remettre');
-  if (bouton) {
-    bouton.addEventListener('click', async () => {
-      bouton.disabled = true;
-      bouton.textContent = 'Enregistrement…';
-      try {
-        const r = await appel('/tours/' + bouton.dataset.tour + '/remise', {
-          method: 'POST',
-        });
-        message(
-          `${francs(r.montant_remis)} remis à ${r.beneficiaire}.` +
-          (r.cycle_cloture ? ' Le cycle est terminé.' : ''),
-          'succes',
-        );
-        afficher('tours');
-      } catch (err) {
-        message(err.message, 'echec');
-        bouton.disabled = false;
-      }
-    });
-  }
-}
-
-/* ---------------------------------------------------------------- prêts --- */
-
-/* Spécialisation ASCA. L'écran montre l'encours, l'échéancier et — pour le
-   président — les demandes en attente de décision. */
-
-async function ecranPrets(contenu) {
-  const prets = await appel('/prets');
-
-  const enAttente = prets.filter((p) => p.statut === 'DEMANDE');
-  const enCours = prets.filter((p) =>
-    ['EN_REMBOURSEMENT', 'EN_RETARD', 'REECHELONNE'].includes(p.statut));
-  const clos = prets.filter((p) => ['SOLDE', 'REFUSE'].includes(p.statut));
-
-  let html = '';
-
-  // L'avoir disponible commande ce que la caisse peut prêter (R-06). L'afficher
-  // avant les demandes évite d'approuver un prêt que la caisse ne peut honorer.
-  if (aRole('PRESIDENT') || aRole('TRESORIER') || aRole('COMMISSAIRE')) {
-    try {
-      const avoir = await appel('/prets/avoir-disponible');
-      html += `
-        <div class="grille">
-          <div class="chiffre">
-            <span class="valeur">${francs(avoir.avoir)}</span>
-            <span class="etiquette">que la caisse peut prêter</span>
-          </div>
-          <div class="chiffre">
-            <span class="valeur">${enCours.length}</span>
-            <span class="etiquette">prêt${enCours.length > 1 ? 's' : ''} en cours</span>
-          </div>
-        </div>`;
-    } catch {
-      // Habilitation insuffisante : l'écran reste utile sans ce bloc.
-    }
-  }
-
-  if (enAttente.length > 0) {
-    html += `<div class="carte"><h2>Demandes à étudier</h2>` +
-      enAttente.map((p) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(p.emprunteur)} — ${francs(p.montant_demande)}</span>
-            <span class="detail">${txt(p.motif_demande)}</span>
-          </div>
-          ${aRole('PRESIDENT')
-            ? `<button class="secondaire" data-approuver="${txt(p.id)}"
-                       data-montant="${txt(p.montant_demande)}"
-                       data-nom="${txt(p.emprunteur)}">Approuver</button>`
-            : `<span class="etat attente">en attente</span>`}
-        </div>`).join('') + `</div>`;
-  }
-
-  if (enCours.length > 0) {
-    html += `<div class="carte"><h2>Prêts en cours</h2>` +
-      enCours.map((p) => {
-        const retard = Number(p.echeances_en_retard) > 0;
-        return `
-          <div class="ligne">
-            <div>
-              <span class="intitule">${txt(p.emprunteur)}</span>
-              <span class="detail">
-                Reste à rembourser ${francs(p.capital_restant_du)}
-                sur ${francs(p.montant_accorde)}
-              </span>
-            </div>
-            ${retard
-              ? `<span class="etat refus">${txt(p.echeances_en_retard)} en retard</span>`
-              : `<span class="etat regle">à jour</span>`}
-          </div>`;
-      }).join('') + `</div>`;
-  }
-
-  if (clos.length > 0) {
-    html += `<div class="carte"><h2>Prêts clos</h2>` +
-      clos.map((p) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(p.emprunteur)}</span>
-            <span class="detail">
-              ${p.statut === 'SOLDE'
-                ? 'Remboursé intégralement'
-                : 'Refusé — ' + txt(p.motif_decision || '')}
-            </span>
-          </div>
-          <span class="etat ${p.statut === 'SOLDE' ? 'regle' : 'refus'}">
-            ${p.statut === 'SOLDE' ? 'soldé' : 'refusé'}
-          </span>
-        </div>`).join('') + `</div>`;
-  }
-
-  if (prets.length === 0) {
-    html = `<div class="carte"><div class="vide">
-              <p><strong>Aucun prêt.</strong></p>
-              <p class="discret">La caisse n'a encore consenti aucun prêt.</p>
-            </div></div>`;
-  }
-
-  contenu.innerHTML = html;
-
-  contenu.querySelectorAll('[data-approuver]').forEach((bouton) => {
-    bouton.addEventListener('click', async () => {
-      const montant = prompt(
-        `Montant à accorder à ${bouton.dataset.nom} ?`,
-        bouton.dataset.montant,
-      );
-      if (montant === null) return;
-
-      bouton.disabled = true;
-      try {
-        const r = await appel('/prets/' + bouton.dataset.approuver + '/approbation', {
-          method: 'POST',
-          body: JSON.stringify({ montant: Number(montant) }),
-        });
-        message(
-          `${francs(r.montant_accorde)} accordés — ${r.echeances} échéances.`,
-          'succes',
-        );
-        afficher('prets');
-      } catch (err) {
-        message(err.message, 'echec');
-        bouton.disabled = false;
-      }
-    });
-  });
-}
-
-/* ---------------------------------------------------------------- aides --- */
-
-/* Spécialisation MUTUELLE. Une aide n'ouvre AUCUNE créance : le vocabulaire de
-   l'écran ne doit jamais laisser croire qu'elle sera remboursée. */
-
-async function ecranAides(contenu) {
-  const aides = await appel('/aides');
-
-  const aDecider = aides.filter((a) => a.statut === 'DEMANDEE');
-  const aVerser  = aides.filter((a) => a.statut === 'APPROUVEE');
-  const closes   = aides.filter((a) => ['VERSEE', 'REFUSEE'].includes(a.statut));
-
-  let html = '';
-
-  if (aDecider.length > 0) {
-    html += `<div class="carte"><h2>Demandes à étudier</h2>` +
-      aDecider.map((a) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(a.beneficiaire)} — ${francs(a.montant_demande)}</span>
-            <span class="detail">${txt(a.motif)}</span>
-          </div>
-          ${aRole('PRESIDENT')
-            ? `<button class="secondaire" data-approuver-aide="${txt(a.id)}"
-                       data-montant="${txt(a.montant_demande)}"
-                       data-nom="${txt(a.beneficiaire)}">Décider</button>`
-            : `<span class="etat attente">en attente</span>`}
-        </div>`).join('') + `</div>`;
-  }
-
-  if (aVerser.length > 0) {
-    html += `<div class="carte"><h2>Aides accordées, à remettre</h2>` +
-      aVerser.map((a) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(a.beneficiaire)} — ${francs(a.montant_accorde)}</span>
-            <span class="detail">${txt(a.motif)}</span>
-          </div>
-          ${aRole('TRESORIER')
-            ? `<button class="secondaire" data-verser="${txt(a.id)}"
-                       data-nom="${txt(a.beneficiaire)}"
-                       data-montant="${txt(a.montant_accorde)}">Remettre</button>`
-            : `<span class="etat attente">à remettre</span>`}
-        </div>`).join('') + `</div>`;
-  }
-
-  if (closes.length > 0) {
-    html += `<div class="carte"><h2>Aides passées</h2>` +
-      closes.map((a) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(a.beneficiaire)}</span>
-            <span class="detail">
-              ${txt(a.motif)}${a.date_versement ? ' · remise le ' + date(a.date_versement) : ''}
-            </span>
-          </div>
-          ${a.statut === 'VERSEE'
-            ? `<span class="montant">${francs(a.montant_accorde)}</span>`
-            : `<span class="etat refus">refusée</span>`}
-        </div>`).join('') + `</div>`;
-  }
-
-  if (aides.length === 0) {
-    html = `<div class="carte"><div class="vide">
-              <p><strong>Aucune demande d'aide.</strong></p>
-              <p class="discret">Le fonds n'a encore été sollicité par personne.</p>
-            </div></div>`;
-  }
-
-  contenu.innerHTML = html;
-
-  contenu.querySelectorAll('[data-approuver-aide]').forEach((bouton) => {
-    bouton.addEventListener('click', async () => {
-      // Le montant accordé peut être INFÉRIEUR au montant demandé : le groupe
-      // arbitre selon l'état du fonds. C'est une décision, pas un droit.
-      const montant = prompt(
-        `Montant accordé à ${bouton.dataset.nom} ?`,
-        bouton.dataset.montant,
-      );
-      if (montant === null) return;
-
-      bouton.disabled = true;
-      try {
-        await appel('/aides/' + bouton.dataset.approuverAide + '/approbation', {
-          method: 'POST',
-          body: JSON.stringify({ montant: Number(montant) }),
-        });
-        message('Aide accordée. Elle reste à remettre au bénéficiaire.', 'succes');
-        afficher('aides');
-      } catch (err) {
-        message(err.message, 'echec');
-        bouton.disabled = false;
-      }
-    });
-  });
-
-  contenu.querySelectorAll('[data-verser]').forEach((bouton) => {
-    bouton.addEventListener('click', async () => {
-      bouton.disabled = true;
-      try {
-        const r = await appel('/aides/' + bouton.dataset.verser + '/versement', {
-          method: 'POST',
-        });
-        message(`${francs(r.montant_verse)} remis à ${r.beneficiaire}.`, 'succes');
-        afficher('aides');
-      } catch (err) {
-        message(err.message, 'echec');
-        bouton.disabled = false;
-      }
-    });
-  });
-}
-
-/* ------------------------------------------------------------ anomalies --- */
-
-/* L'ÉCRAN S'APPELLE « À VÉRIFIER », PAS « ANOMALIES » — encore moins
-   « ALERTES ». Une tontine repose sur la confiance ; un outil qui désignerait
-   un coupable détruirait ce qu'il prétend protéger. Chaque libellé décrit un
-   constat, jamais une intention. */
-
-async function ecranAnomalies(contenu) {
-  const ouvertes = await appel('/anomalies');
-
-  const critiques = ouvertes.filter((a) => a.gravite === 'CRITIQUE');
-  const autres    = ouvertes.filter((a) => a.gravite !== 'CRITIQUE');
-
-  let html = `
-    <div class="carte">
-      <h2>À vérifier</h2>
-      <p class="discret">
-        Des écarts constatés automatiquement. Chacun peut avoir une explication
-        simple — un versement saisi en retard, une dispense accordée.
-      </p>
-      <button class="secondaire" id="balayer">Relancer la vérification</button>
-    </div>`;
-
-  const carte = (a) => `
-    <div class="ligne">
-      <div>
-        <span class="intitule">${txt(a.description)}</span>
-        <span class="detail">Constaté le ${date(a.detectee_le)}</span>
-      </div>
-      <button class="secondaire" data-lever="${txt(a.id)}">Justifier</button>
-    </div>`;
-
-  if (critiques.length > 0) {
-    html += `<div class="carte">
-               <h2>À vérifier en priorité</h2>
-               ${critiques.map(carte).join('')}
-             </div>`;
-  }
-
-  if (autres.length > 0) {
-    html += `<div class="carte"><h2>À examiner</h2>${autres.map(carte).join('')}</div>`;
-  }
-
-  if (ouvertes.length === 0) {
-    html += `<div class="carte"><div class="vide">
-               <p><strong>Rien à vérifier.</strong></p>
-               <p class="discret">Les comptes du groupe sont cohérents.</p>
-             </div></div>`;
-  }
-
-  // Les anomalies levées restent consultables : la levée fait partie de la
-  // piste d'audit, elle n'efface rien.
-  const levees = await appel('/anomalies/levees');
-  if (levees.length > 0) {
-    html += `<div class="carte">
-      <h2>Déjà justifiées</h2>
-      <p class="discret">
-        Ces écarts ont été expliqués. Ils restent au dossier : savoir qu'un
-        écart a été constaté puis justifié vaut souvent plus que l'écart.
-      </p>` +
-      levees.map((a) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(a.description)}</span>
-            <span class="detail">
-              ${txt(a.motif_levee)} — ${txt(a.levee_par || '')}, le ${date(a.levee_le)}
-            </span>
-          </div>
-        </div>`).join('') + `</div>`;
-  }
-
-  contenu.innerHTML = html;
-
-  document.getElementById('balayer').addEventListener('click', async (e) => {
-    e.target.disabled = true;
-    e.target.textContent = 'Vérification…';
-    try {
-      const r = await appel('/anomalies/balayage', { method: 'POST' });
-      const total = Object.values(r).reduce((s, n) => s + Number(n), 0);
-      message(
-        total === 0
-          ? 'Vérification terminée : rien à signaler.'
-          : `Vérification terminée : ${total} point${total > 1 ? 's' : ''} à examiner.`,
-        'succes',
-      );
-      afficher('anomalies');
-    } catch (err) {
-      message(err.message, 'echec');
-      e.target.disabled = false;
-      e.target.textContent = 'Relancer la vérification';
-    }
-  });
-
-  contenu.querySelectorAll('[data-lever]').forEach((bouton) => {
-    bouton.addEventListener('click', async () => {
-      // Le motif est obligatoire et restera au dossier (F-ANO-08). L'invite le
-      // dit, pour qu'on ne découvre pas après coup que « vu » était insuffisant.
-      const motif = prompt(
-        'Pourquoi cet écart s\'explique-t-il ?\n\n' +
-        'Votre explication restera au dossier et doit rester compréhensible ' +
-        'dans plusieurs mois (20 caractères au moins).',
-      );
-      if (motif === null) return;
-
-      bouton.disabled = true;
-      try {
-        await appel('/anomalies/' + bouton.dataset.lever + '/levee', {
-          method: 'POST',
-          body: JSON.stringify({ motif }),
-        });
-        message('Écart justifié. Il reste consultable au dossier.', 'succes');
-        afficher('anomalies');
-      } catch (err) {
-        message(err.message, 'echec');
-        bouton.disabled = false;
-      }
-    });
-  });
-}
-
 /* -------------------------------------------------------------- rapport --- */
 
 /* F-RAP-05 — LE RAPPORT D'ASSEMBLÉE.
@@ -1378,92 +981,6 @@ async function telecharger(chemin, nom) {
   } catch (err) {
     message(err.message, 'echec');
   }
-}
-
-/* -------------------------------------------------- rapprochement MM --- */
-
-/* F-TRX-06 — LE RAPPROCHEMENT NE CORRIGE RIEN.
-   Il compare le relevé de l'opérateur au registre et signale les écarts dans
-   les deux sens. Importer automatiquement les lignes reviendrait à laisser un
-   opérateur écrire dans les comptes du groupe. */
-
-async function ecranRapprochement(contenu) {
-  const releves = await appel('/releves');
-
-  if (releves.length === 0) {
-    contenu.innerHTML = `
-      <div class="carte"><div class="vide">
-        <p><strong>Aucun relevé importé.</strong></p>
-        <p class="discret">
-          Importez un relevé Mobile Money pour vérifier qu'il correspond aux
-          versements enregistrés.
-        </p>
-      </div></div>`;
-    return;
-  }
-
-  const dernier = releves[0];
-  const r = await appel('/releves/' + dernier.id + '/rapprochement');
-
-  const ecarts = r.lignes.filter((l) => l.statut !== 'RAPPROCHE');
-
-  let html = `
-    <div class="carte">
-      <h2>${txt(dernier.operateur)}</h2>
-      <p class="discret">
-        Du ${date(dernier.periode_debut)} au ${date(dernier.periode_fin)} ·
-        ${txt(dernier.lignes)} ligne(s) importée(s)
-      </p>
-    </div>
-    <div class="grille">
-      <div class="chiffre">
-        <span class="valeur">${txt(r.synthese.rapproches)}</span>
-        <span class="etiquette">versements retrouvés</span>
-      </div>
-      <div class="chiffre">
-        <span class="valeur">${txt(r.synthese.absents_du_registre)}</span>
-        <span class="etiquette">reçus mais non saisis</span>
-      </div>
-      <div class="chiffre">
-        <span class="valeur">${txt(r.synthese.absents_du_releve)}</span>
-        <span class="etiquette">saisis mais introuvables</span>
-      </div>
-    </div>`;
-
-  if (ecarts.length > 0) {
-    html += `<div class="carte">
-      <h2>À vérifier</h2>
-      <p class="discret">
-        Ces écarts sont signalés, non corrigés. C'est à vous de décider ce que
-        chacun appelle.
-      </p>` +
-      ecarts.map((l) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">
-              ${l.statut === 'ABSENT_DU_REGISTRE'
-                ? 'Reçu mais non enregistré'
-                : 'Enregistré mais absent du relevé'}
-            </span>
-            <span class="detail">
-              ${txt(l.reference)}${l.membre ? ' · ' + txt(l.membre) : ''}
-              · ${date(l.date_operation)}
-            </span>
-          </div>
-          <span class="montant">
-            ${francs(l.montant_releve || l.montant_registre)}
-          </span>
-        </div>`).join('') + `</div>`;
-  } else {
-    html += `<div class="carte"><div class="vide">
-               <p><strong>Tout concorde.</strong></p>
-               <p class="discret">
-                 Chaque versement du relevé correspond à un versement enregistré.
-               </p>
-             </div></div>`;
-  }
-
-  contenu.innerHTML = html;
 }
 
 /* ------------------------------------------------------- impression --- */
@@ -1567,248 +1084,6 @@ function imprimer() {
    que la plateforme existe pour abolir. */
 
 let filtreHistorique = null;
-
-/* ------------------------------------------------- reprise d'un cahier --- */
-
-/* EN DEUX TEMPS, ET C'EST TOUT L'ÉCRAN. On dépose le fichier, on regarde ce
-   que la plateforme y a lu, PUIS on valide. Le journal comptable étant
-   immuable, un import regretté ne se défait pas : il faut détruire le groupe
-   et recommencer. L'aperçu est la seule protection réelle du trésorier, et il
-   ne doit pas pouvoir être sauté.
-
-   Le contenu lu reste en mémoire entre les deux temps : le renvoyer au
-   serveur tel quel garantit que ce qui est importé est exactement ce qui a été
-   montré. */
-let cahierEnAttente = null;
-
-async function ecranImport(contenu) {
-  const passes = await appel('/import');
-
-  if (passes.length > 0) {
-    const p = passes[0];
-    contenu.innerHTML = `
-      <div class="carte"><div class="vide">
-        <p><strong>Ce groupe a déjà repris un cahier.</strong></p>
-        <p class="discret">
-          « ${txt(p.source)} », le ${date(p.cree_le)} par ${txt(p.importe_par)} :
-          ${txt(p.membres_crees)} membre(s), ${txt(p.versements_crees)} versement(s),
-          ${francs(p.montant_total)}.
-        </p>
-        <p class="discret">
-          Un cahier ne se reprend qu'une fois, dans un groupe neuf. Les
-          versements suivants se saisissent normalement.
-        </p>
-      </div></div>`;
-    return;
-  }
-
-  contenu.innerHTML = `
-    <div class="formulaire">
-      <h2>Reprendre un cahier existant</h2>
-      <p class="discret">
-        Déposez le cahier du groupe au format CSV — un export de tableur suffit.
-        Vous verrez d'abord ce qui a été lu, et vous validerez ensuite.
-      </p>
-
-      <label for="fichier-cahier">Fichier du cahier</label>
-      <input type="file" id="fichier-cahier" accept=".csv,text/csv,text/plain">
-
-      <label for="indicatif">Indicatif, si les numéros sont écrits sans</label>
-      <input type="text" id="indicatif" placeholder="+237" maxlength="5">
-
-      <details>
-        <summary>Quelles colonnes mettre dans le fichier ?</summary>
-        <p class="discret">
-          Une ligne par versement. Les en-têtes reconnus :
-          <strong>nom</strong> et <strong>telephone</strong> (obligatoires),
-          puis <strong>rang</strong> (ordre de passage du membre),
-          <strong>tour</strong> (à quel tour se rapporte le versement),
-          <strong>date</strong>, <strong>montant</strong> et
-          <strong>moyen</strong>.
-        </p>
-        <p class="discret">
-          Les dates s'écrivent JJ/MM/AAAA. Les montants sont en francs entiers :
-          « 15 000 » et non « 15 000,00 ».
-        </p>
-      </details>
-    </div>
-
-    <div id="apercu-cahier"></div>`;
-
-  document.getElementById('fichier-cahier')
-    .addEventListener('change', lireCahier);
-}
-
-async function lireCahier(evenement) {
-  const fichier = evenement.target.files && evenement.target.files[0];
-  if (!fichier) return;
-
-  const zone = document.getElementById('apercu-cahier');
-  zone.innerHTML = '<div class="carte"><p class="vide">Lecture…</p></div>';
-
-  try {
-    const texte = await fichier.text();
-    const indicatif = document.getElementById('indicatif').value.trim();
-
-    const apercu = await appel('/import/apercu', {
-      method: 'POST',
-      body: JSON.stringify({
-        contenu: texte,
-        ...(indicatif ? { indicatif_defaut: indicatif } : {}),
-      }),
-    });
-
-    cahierEnAttente = { contenu: texte, source: fichier.name, indicatif };
-    dessinerApercu(apercu);
-  } catch (err) {
-    cahierEnAttente = null;
-    // Le message vient du serveur et nomme la ligne fautive — « Ligne 14 :
-    // date illisible ». Le relayer tel quel vaut mieux que de le remplacer.
-    zone.innerHTML =
-      `<div class="carte"><p class="erreur">${txt(err.message)}</p>
-       <p class="discret">Corrigez le fichier et déposez-le à nouveau.</p></div>`;
-  }
-}
-
-function dessinerApercu(apercu) {
-  const zone = document.getElementById('apercu-cahier');
-
-  const avertissements = apercu.avertissements.length === 0 ? '' : `
-    <div class="carte">
-      <h3>À noter</h3>
-      ${apercu.avertissements
-        .map((a) => `<p class="discret">${txt(a)}</p>`)
-        .join('')}
-    </div>`;
-
-  const periode = apercu.premiere_operation
-    ? `du ${date(apercu.premiere_operation)} au ${date(apercu.derniere_operation)}`
-    : 'aucun versement daté';
-
-  zone.innerHTML = `
-    <div class="grille">
-      <div class="chiffre">
-        <span class="valeur">${txt(apercu.membres.length)}</span>
-        <span class="etiquette">membres</span>
-      </div>
-      <div class="chiffre">
-        <span class="valeur">${txt(apercu.nombre_versements)}</span>
-        <span class="etiquette">versements</span>
-      </div>
-      <div class="chiffre">
-        <span class="valeur">${francs(apercu.montant_total)}</span>
-        <span class="etiquette">montant total</span>
-      </div>
-    </div>
-
-    ${avertissements}
-
-    <div class="carte">
-      <h3>Ordre de passage lu dans le cahier</h3>
-      <p class="discret">${txt(periode)}</p>
-      ${apercu.membres.map((m, i) => `
-        <div class="ligne">
-          <div>
-            <span class="intitule">${txt(m.nom)}</span>
-            <span class="detail">${txt(m.telephone)}</span>
-          </div>
-          <span class="etat attente">tour ${txt(m.rang === null ? i + 1 : m.rang)}</span>
-        </div>`).join('')}
-    </div>
-
-    <div class="formulaire">
-      <h3>Valider la reprise</h3>
-      <p class="discret">
-        Vérifiez l'ordre de passage ci-dessus : il ne se modifie plus après
-        validation. Les versements seront enregistrés comme s'ils avaient été
-        saisis au fil de l'eau.
-      </p>
-
-      <label for="cotisation">Cotisation due par membre et par tour</label>
-      <input type="number" id="cotisation" inputmode="numeric" min="1" step="1"
-             placeholder="10000" required>
-
-      <div class="duo">
-        <div>
-          <label for="periodicite">Périodicité</label>
-          <select id="periodicite">
-            <option value="MENSUELLE">Mensuelle</option>
-            <option value="HEBDOMADAIRE">Hebdomadaire</option>
-            <option value="QUINZAINE">Tous les quinze jours</option>
-            <option value="TRIMESTRIELLE">Trimestrielle</option>
-          </select>
-        </div>
-        <div>
-          <label for="debut">Premier tour</label>
-          <input type="date" id="debut"
-                 value="${txt(apercu.premiere_operation || aujourdhui())}" required>
-        </div>
-      </div>
-
-      <button class="principal" id="valider-import">Reprendre ce cahier</button>
-    </div>`;
-
-  document.getElementById('valider-import')
-    .addEventListener('click', validerImport);
-}
-
-async function validerImport(evenement) {
-  const bouton = evenement.target;
-  const cotisation = Number(document.getElementById('cotisation').value);
-  const periodicite = document.getElementById('periodicite').value;
-  const debut = document.getElementById('debut').value;
-
-  if (!cotisation || cotisation < 1) {
-    message('Indiquez la cotisation due par chaque membre à chaque tour.', 'erreur');
-    return;
-  }
-  if (!debut) {
-    message('Indiquez la date du premier tour.', 'erreur');
-    return;
-  }
-
-  // DÉSACTIVÉ PENDANT L'ENVOI. Un double clic sur ce bouton précis lancerait
-  // deux imports concurrents ; le second serait refusé par l'empreinte, mais
-  // l'utilisateur verrait une erreur incompréhensible après un import réussi.
-  bouton.disabled = true;
-  bouton.textContent = 'Reprise en cours…';
-
-  try {
-    const r = await appel('/import', {
-      method: 'POST',
-      body: JSON.stringify({
-        contenu: cahierEnAttente.contenu,
-        source: cahierEnAttente.source,
-        montant_cotisation: cotisation,
-        periodicite,
-        date_debut: debut,
-        ...(cahierEnAttente.indicatif
-          ? { indicatif_defaut: cahierEnAttente.indicatif }
-          : {}),
-      }),
-    });
-
-    message(
-      `Cahier repris : ${r.membres_crees} membre(s), ${r.tours_crees} tour(s), `
-      + `${r.versements_crees} versement(s).`,
-      'succes',
-    );
-
-    // Le groupe porte désormais un cycle : l'onglet d'import disparaît, et la
-    // session en mémoire doit le refléter sans exiger une reconnexion.
-    session.groupe.cycle_en_cours = true;
-    try {
-      sessionStorage.setItem('tontine', JSON.stringify(session));
-    } catch { /* la session en mémoire suffit */ }
-
-    cahierEnAttente = null;
-    afficher('accueil');
-  } catch (err) {
-    message(err.message, 'erreur');
-    bouton.disabled = false;
-    bouton.textContent = 'Reprendre ce cahier';
-  }
-}
 
 async function ecranHistorique(contenu) {
   const [lignes, synthese] = await Promise.all([
